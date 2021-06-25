@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "PowerProcess": {
+      "commandName": "Executable",
+      "executablePath": "C:\\extern\\lab\\powershell\\src\\powershell-win-core\\bin\\Debug\\net5.0\\pwsh-tst.exe",
+      "commandLineArgs": "-noprofile -noexit -command \" write-host 'start!'; import-module C:\\Users\\LuizMonad\\Desktop\\PowershellProcess\\bin\\Release\\net5.0\\PowerProcess.dll -Force; Invoke-ProcessFast -Wait -FilePath pwsh -ArgumentList @('-noprofile', '-command', 'ls c:/windows/ -recurse') ; write-host 'ok!' \"",
+      "environmentVariables": {
+        "POWERSHELL_TELEMETRY_OPTOUT": "true"
+      }
+    }
+  }
+}
