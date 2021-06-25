@@ -9,6 +9,8 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nito.AsyncEx;
+using System.Text;
+using System.Management.Automation.Language;
 
 namespace PowerProcess
 {
@@ -28,9 +30,9 @@ namespace PowerProcess
     [OutputType(typeof(Process))]
     public sealed class InvokeProcessFastCommand : PSCmdlet, IDisposable
     {
-        private Process _process = null;
-        private ManualResetEvent _waitHandle = null;
-        private CancellationTokenSource _cancellationSource = null;
+        private Process? _process = null;
+        private ManualResetEvent? _waitHandle = null;
+        private CancellationTokenSource? _cancellationSource = null;
 
         #region Parameters
 
@@ -92,6 +94,13 @@ namespace PowerProcess
         [Parameter]
         [Alias("Merge")]
         public SwitchParameter MergeStandardErrorToOutput { get; set; }
+
+        /// <summary>
+        /// Wrap output stream.
+        /// </summary>
+        [Parameter]
+        [Alias("Obj")]
+        public SwitchParameter WrapOutputStream { get; set; }
 
         /// <summary>
         /// Wait for the process to terminate.
@@ -230,17 +239,14 @@ namespace PowerProcess
                 {
                     if (!_process.HasExited)
                     {
-                        if (base.MyInvocation.ExpectingInput)
-                        {
-                            ProduceNativeProcessInput();
-                        }
-                        ConsumeAvailableNativeProcessOutput(blocking: true);
+                        ProduceNativeProcessInput(_process);
+                        ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
                         _process.WaitForExit();
                         SetLastExitCode(_process);
                     }
                     else
                     {
-                        ConsumeAvailableNativeProcessOutput(blocking: true);
+                        ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
                         SetLastExitCode(_process);
                     }
                 }
@@ -267,14 +273,11 @@ namespace PowerProcess
         /// </summary>
         protected override void ProcessRecord()
         {
-            if (!base.MyInvocation.ExpectingInput || Wait.IsPresent)
+            if (Wait.IsPresent) return;
+            if (_process != null && _cancellationSource != null)
             {
-                return;
-            }
-            if (_process != null)
-            {
-                ProduceNativeProcessInput();
-                ConsumeAvailableNativeProcessOutput(blocking: false);
+                ProduceNativeProcessInput(_process);
+                ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: false);
             }
             else
             {
@@ -289,24 +292,23 @@ namespace PowerProcess
         /// </summary>
         protected override void EndProcessing()
         {
-            if (Wait.IsPresent || _process == null)
-            {
-                return;
-            }
-            ConsumeAvailableNativeProcessOutput(blocking: true);
+            if (Wait.IsPresent || _process == null || _cancellationSource == null) return;
+
+            ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
+
             if (_waitHandle != null)
             {
                 _waitHandle.WaitOne();
             }
-            if (!_process.HasExited)
+            if (_process.HasExited)
+            {
+                SetLastExitCode(_process);
+            }
+            else
             {
                 var message = StringUtil.Format(ProcessResources.ProcessIsNotTerminated);
                 ErrorRecord er = new ErrorRecord(new InvalidOperationException(message), "InvalidOperationException", ErrorCategory.InvalidOperation, null);
                 ThrowTerminatingError(er);
-            }
-            else
-            {
-                SetLastExitCode(_process);
             }
         }
 
@@ -374,7 +376,7 @@ namespace PowerProcess
         /// <summary>
         /// When Process exits the wait handle is set.
         /// </summary>
-        private void myProcess_Exited(object sender, System.EventArgs e)
+        private void myProcess_Exited(object? sender, System.EventArgs e)
         {
             if (_waitHandle != null)
             {
@@ -401,8 +403,8 @@ namespace PowerProcess
 
                 if (key.Equals("PATH"))
                 {
-                    processEnvironment.Add(key, 
-                        Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Machine) + ";" + 
+                    processEnvironment.Add(key,
+                        Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Machine) + ";" +
                         Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.User));
                 }
                 else
@@ -430,47 +432,159 @@ namespace PowerProcess
         /// <summary>
         /// Read the input from the pipeline and send it down the native process.
         /// </summary>
-        private void ProduceNativeProcessInput()
+        private void ProduceNativeProcessInput(Process p)
         {
-            _process.StandardInput.WriteLine(InputObject);
+            if (!base.MyInvocation.ExpectingInput) return;
+            p.StandardInput.WriteLine(InputObject);
         }
 
         /// <summary>
         /// Read the output from the native process and send it down the line.
         /// </summary>
-        private void ConsumeAvailableNativeProcessOutput(bool blocking)
+        private void ConsumeAvailableNativeProcessOutput(Process p, CancellationToken ct, bool blocking)
         {
+            if (DontRedirectOutputs) return;
             var _buffer = OutputBuffer ?? 256;
-            Func<Task> _task = (async () =>
+            var _merge = MergeStandardErrorToOutput;
+            var _wrap = WrapOutputStream;
+            var _task = infer(async () =>
             {
-                if (_buffer == int.MaxValue)
+                var _out = p.StandardOutput;
+                var _err = p.StandardError;
+                var lstOut = _wrap ? null : mkList<String>(_buffer);
+                var lstErr = _wrap ? null : mkList<String>(_buffer);
+                var lstWrap = _wrap ? mkList<WrapObject>(_buffer) : null;
+                string? str = null;
+                Task<string?>? tout = null;
+                Task<string?>? terr = null;
+                do
                 {
-                    var str = await _process.StandardOutput.ReadToEndAsync();
-                    base.WriteObject(str);
-                }
-                else
-                {
-                    var so = _process.StandardOutput;
-                    while (!so.EndOfStream)
+                    var count = 0;
+                    do
                     {
-                        var strList = new List<String>(_buffer);
-                        for (var i = 0; i < _buffer && !so.EndOfStream; i++)
+                        tout ??= _out.ReadLineAsync();
+                        terr ??= _err.ReadLineAsync();
+                        str = await Task.WhenAny(tout, terr).Result;
+                        if (tout.IsCompleted)
                         {
-                            var str = await so.ReadLineAsync();
-                            strList.Add(str);
+                            var r = tout.Result!;
+                            if (r != null)
+                            {
+                                if (_buffer == 1 && _wrap) base.WriteObject(WrapObject.Output(r));
+                                else if (_buffer == 1) base.WriteObject(r);
+                                else if (_wrap) lstWrap!.Add(WrapObject.Output(r));
+                                else lstOut!.Add(r);
+                                count++;
+                            }
+                            tout = null;
                         }
-                        base.WriteObject(strList);
+                        if (terr.IsCompleted)
+                        {
+                            var r = terr.Result!;
+                            if (r != null)
+                            {
+                                if (_buffer == 1 && _wrap) base.WriteObject(WrapObject.Error(r));
+                                else if (_buffer == 1) base.WriteError(mkError(r));
+                                if (_wrap) lstWrap!.Add(WrapObject.Error(r));
+                                else if (_merge) lstOut!.Add(r);
+                                else lstErr!.Add(r);
+                                count++;
+                            }
+                            terr = null;
+                        }
+                    } while (count < _buffer && str != null);
+                    if (_wrap && lstWrap!.Count > 0)
+                    {
+                        base.WriteObject(lstWrap);
+                        lstWrap.Clear();
                     }
-                }
+                    if (!_wrap && lstOut!.Count > 0)
+                    {
+                        base.WriteObject(lstOut);
+                        lstOut.Clear();
+                    }
+                    if (!_wrap && lstErr!.Count > 0)
+                    {
+                        base.WriteError(mkError(lstErr));
+                        lstErr.Clear();
+                    }
+                } while (str != null);
             });
             if (blocking)
             {
-                AsyncContext.Run(_task, _cancellationSource.Token);
+                AsyncContext.Run(_task, ct);
             }
             else
             {
                 Task.Factory.Run(_task);
             }
+        }
+
+        private ErrorRecord mkError(string message)
+        {
+            return new ErrorRecord(new StdErr(message), null, ErrorCategory.FromStdErr, null);
+        }
+        private ErrorRecord mkError(List<string> messages)
+        {
+            return new ErrorRecord(new StdErr(messages), null, ErrorCategory.FromStdErr, null);
+        }
+
+        private class StdErr : Exception
+        {
+            private static List<string> empty = new List<string>();
+            private readonly List<string> err;
+
+            public StdErr(List<string> err) : base(ToString(err))
+            {
+                this.err = err;
+            }
+
+            public StdErr(string message) : base(message)
+            {
+                this.err = empty;
+            }
+
+            public IList<string> ErrorList => err;
+
+            public static string ToString(List<string> err)
+            {
+                var sb = new StringBuilder();
+                foreach (var str in err) sb.Append(str);
+                return sb.ToString();
+            }
+
+        }
+
+        private struct WrapObject
+        {
+
+            public WrapObject(RedirectionStream stream, string message)
+            {
+                Stream = stream;
+                Message = message;
+            }
+
+            public RedirectionStream Stream { get; }
+            public string Message { get; }
+
+
+            internal static WrapObject Error(string message)
+            {
+                return new WrapObject(RedirectionStream.Error, message);
+            }
+
+            internal static WrapObject Output(string message)
+            {
+                return new WrapObject(RedirectionStream.Output, message);
+            }
+
+        }
+
+        private static Func<TRes> infer<TRes>(Func<TRes> arg) { return arg; }
+
+        private static List<T> mkList<T>(int capacity)
+        {
+            return capacity == int.MaxValue ? new List<T>(32) : new List<T>(capacity);
         }
 
         private void SetLastExitCode(Process process)
