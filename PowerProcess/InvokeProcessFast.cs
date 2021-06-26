@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nito.AsyncEx;
 using System.Text;
 using System.Management.Automation.Language;
+using System.Management.Automation.Runspaces;
 
 namespace PowerProcess
 {
@@ -129,7 +130,7 @@ namespace PowerProcess
 
         #endregion
 
-        #region overrides
+        #region Overrides
 
         /// <summary>
         /// BeginProcessing.
@@ -294,7 +295,7 @@ namespace PowerProcess
         {
             if (Wait.IsPresent || _process == null || _cancellationSource == null) return;
 
-            ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
+            //ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
 
             if (_waitHandle != null)
             {
@@ -445,8 +446,8 @@ namespace PowerProcess
         {
             if (DontRedirectOutputs) return;
             var _buffer = OutputBuffer ?? 256;
-            var _merge = MergeStandardErrorToOutput;
-            var _wrap = WrapOutputStream;
+            var _merge = MergeStandardErrorToOutput.ToBool();
+            var _wrap = WrapOutputStream.ToBool();
             var _task = infer(async () =>
             {
                 var _out = p.StandardOutput;
@@ -454,45 +455,55 @@ namespace PowerProcess
                 var lstOut = _wrap ? null : mkList<String>(_buffer);
                 var lstErr = _wrap ? null : mkList<String>(_buffer);
                 var lstWrap = _wrap ? mkList<WrapObject>(_buffer) : null;
+                var streams = new[] { _out, _err };
+                var redir = new[] { false, _merge };
+                var tasks = new Task<string?>?[2] { null, null };
                 string? str = null;
-                Task<string?>? tout = null;
-                Task<string?>? terr = null;
                 do
                 {
                     var count = 0;
                     do
                     {
-                        tout ??= _out.ReadLineAsync();
-                        terr ??= _err.ReadLineAsync();
-                        str = await Task.WhenAny(tout, terr).Result;
-                        if (tout.IsCompleted)
+                        // null if complete, fire another one
+                        for (var i = 0; i < streams.Length; i++)
                         {
-                            var r = tout.Result!;
-                            if (r != null)
+                            tasks[i] ??= streams[i].ReadLineAsync();
+                        }
+                        // wait
+                        str = await Task.WhenAny(tasks).Result;
+                        // for each stream
+                        for (var i = 0; i < streams.Length; i++)
+                        {
+                            // get and clear for next read if completed
+                            var t = tasks[i]!;
+                            if (!t.IsCompleted) continue;
+                            tasks[i] = null;
+
+                            // check for end of stream
+                            var r = t.Result!;
+                            if (r == null) continue;
+
+                            // now redirect
+                            if (redir[i])
                             {
                                 if (_buffer == 1 && _wrap) base.WriteObject(WrapObject.Output(r));
-                                else if (_buffer == 1) base.WriteObject(r);
+                                else if (_buffer == 1) base.WriteObject(PSObject.AsPSObject(r));
                                 else if (_wrap) lstWrap!.Add(WrapObject.Output(r));
                                 else lstOut!.Add(r);
-                                count++;
                             }
-                            tout = null;
-                        }
-                        if (terr.IsCompleted)
-                        {
-                            var r = terr.Result!;
-                            if (r != null)
+                            else
                             {
                                 if (_buffer == 1 && _wrap) base.WriteObject(WrapObject.Error(r));
                                 else if (_buffer == 1) base.WriteError(mkError(r));
                                 if (_wrap) lstWrap!.Add(WrapObject.Error(r));
-                                else if (_merge) lstOut!.Add(r);
                                 else lstErr!.Add(r);
-                                count++;
                             }
-                            terr = null;
+                            count++;
                         }
+                        // until buffer full or end of any streams
                     } while (count < _buffer && str != null);
+
+                    // send collected results for each stream respectively
                     if (_wrap && lstWrap!.Count > 0)
                     {
                         base.WriteObject(lstWrap);
@@ -500,7 +511,7 @@ namespace PowerProcess
                     }
                     if (!_wrap && lstOut!.Count > 0)
                     {
-                        base.WriteObject(lstOut);
+                        base.WriteObject(PSObject.AsPSObject(lstOut));
                         lstOut.Clear();
                     }
                     if (!_wrap && lstErr!.Count > 0)
@@ -508,6 +519,8 @@ namespace PowerProcess
                         base.WriteError(mkError(lstErr));
                         lstErr.Clear();
                     }
+
+                    // until end of all streams
                 } while (str != null);
             });
             if (blocking)
@@ -516,9 +529,13 @@ namespace PowerProcess
             }
             else
             {
-                Task.Factory.Run(_task);
+                PsRun(_task, ct);
             }
         }
+
+        #endregion
+
+        #region Helpers
 
         private ErrorRecord mkError(string message)
         {
@@ -593,6 +610,34 @@ namespace PowerProcess
         }
 
         #endregion
+
+        #region Inner powershell
+
+        private static void PsRun(Func<Task> task, CancellationToken ct)
+        {
+            var iss = InitialSessionState.CreateDefault2();
+            iss.ThreadOptions = PSThreadOptions.UseNewThread;
+            var rs = RunspaceFactory.CreateRunspace(iss);
+            rs.StateChanged += (sender, psStateChanged) =>
+            {
+                var newStateInfo = psStateChanged.RunspaceStateInfo;
+
+                // Update Job state.
+                switch (newStateInfo.State)
+                {
+                    case RunspaceState.Opened:
+                        Thread.CurrentThread.Name = "InvokeProcessFast";
+                        var p = rs.CreatePipeline();
+                        p.
+                        AsyncContext.Run(task, ct);
+                        break;
+                }
+            };
+            rs.OpenAsync();
+        }
+
+        #endregion
+
     }
 
 }
