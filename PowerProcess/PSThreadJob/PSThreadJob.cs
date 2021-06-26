@@ -11,9 +11,12 @@ using System.Management.Automation;
 using System.Management.Automation.Host;
 using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
+#if !NETCOREAPP
 using System.Management.Automation.Security;
+#endif
 using System.Text;
 using System.Threading;
+using PowerProcess.PSThreadJob;
 
 namespace ThreadJob
 {
@@ -31,15 +34,16 @@ namespace ThreadJob
         #endregion
 
         #region Parameters
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 
         private const string ScriptBlockParameterSet = "ScriptBlock";
         private const string FilePathParameterSet = "FilePath";
 
-        [Parameter(ParameterSetName = ScriptBlockParameterSet, Mandatory=true, Position=0)]
-        [ValidateNotNullAttribute]
+        [Parameter(ParameterSetName = ScriptBlockParameterSet, Mandatory = true, Position = 0)]
+        [ValidateNotNull]
         public ScriptBlock ScriptBlock { get; set; }
 
-        [Parameter(ParameterSetName = FilePathParameterSet, Mandatory=true, Position=0)]
+        [Parameter(ParameterSetName = FilePathParameterSet, Mandatory = true, Position = 0)]
         [ValidateNotNullOrEmpty]
         public string FilePath { get; set; }
 
@@ -51,16 +55,16 @@ namespace ThreadJob
         [Parameter(ParameterSetName = ScriptBlockParameterSet)]
         [Parameter(ParameterSetName = FilePathParameterSet)]
         [ValidateNotNull]
-        public ScriptBlock InitializationScript { get; set; }
+        public ScriptBlock? InitializationScript { get; set; }
 
-        [Parameter(ParameterSetName = ScriptBlockParameterSet, ValueFromPipeline=true)]
-        [Parameter(ParameterSetName = FilePathParameterSet, ValueFromPipeline=true)]
+        [Parameter(ParameterSetName = ScriptBlockParameterSet, ValueFromPipeline = true)]
+        [Parameter(ParameterSetName = FilePathParameterSet, ValueFromPipeline = true)]
         [ValidateNotNull]
-        public PSObject InputObject { get; set; }
+        public PSObject? InputObject { get; set; }
 
         [Parameter(ParameterSetName = ScriptBlockParameterSet)]
         [Parameter(ParameterSetName = FilePathParameterSet)]
-        public Object[] ArgumentList { get; set; }
+        public Object[]? ArgumentList { get; set; }
 
         [Parameter(ParameterSetName = ScriptBlockParameterSet)]
         [Parameter(ParameterSetName = FilePathParameterSet)]
@@ -69,8 +73,9 @@ namespace ThreadJob
 
         [Parameter(ParameterSetName = ScriptBlockParameterSet)]
         [Parameter(ParameterSetName = FilePathParameterSet)]
-        public PSHost StreamingHost { get; set; }
+        public PSHost? StreamingHost { get; set; }
 
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
         #endregion
 
         #region Overrides
@@ -103,16 +108,8 @@ namespace ThreadJob
 
             if (!_processFirstRecord)
             {
-                if (StreamingHost != null)
-                {
-                    _threadJob = new ThreadJob(Name, _command, ScriptBlock, FilePath, InitializationScript, ArgumentList,
-                                               InputObject, this, _currentLocationPath, StreamingHost);
-                }
-                else
-                {
-                    _threadJob = new ThreadJob(Name, _command, ScriptBlock, FilePath, InitializationScript, ArgumentList,
-                                               InputObject, this, _currentLocationPath);
-                }
+                _threadJob = new ThreadJob(Name, _command!, ScriptBlock, FilePath, InitializationScript, ArgumentList,
+                                           InputObject, this, _currentLocationPath, StreamingHost);
 
                 ThreadJob.StartJob(_threadJob, ThrottleLimit);
                 WriteObject(_threadJob);
@@ -143,7 +140,7 @@ namespace ThreadJob
     {
         #region Members
 
-        private ConcurrentDictionary<Guid, Job2> _repository;
+        private readonly ConcurrentDictionary<Guid, Job2> _repository;
 
         #endregion
 
@@ -188,7 +185,7 @@ namespace ThreadJob
         /// </summary>
         public override IList<Job2> GetJobsByName(string name, bool recurse)
         {
-            List<Job2> rtnList = new List<Job2>();
+            var rtnList = new List<Job2>();
             foreach (var job in _repository.Values)
             {
                 if (job.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
@@ -204,7 +201,7 @@ namespace ThreadJob
         /// </summary>
         public override IList<Job2> GetJobsByCommand(string command, bool recurse)
         {
-            List<Job2> rtnList = new List<Job2>();
+            var rtnList = new List<Job2>();
             foreach (var job in _repository.Values)
             {
                 if (job.Command.Equals(command, StringComparison.OrdinalIgnoreCase))
@@ -218,10 +215,9 @@ namespace ThreadJob
         /// <summary>
         /// GetJobByInstanceId
         /// </summary>
-        public override Job2 GetJobByInstanceId(Guid instanceId, bool recurse)
+        public override Job2? GetJobByInstanceId(Guid instanceId, bool recurse)
         {
-            Job2 job;
-            if (_repository.TryGetValue(instanceId, out job))
+            if (_repository.TryGetValue(instanceId, out var job))
             {
                 return job;
             }
@@ -231,7 +227,7 @@ namespace ThreadJob
         /// <summary>
         /// GetJobBySessionId
         /// </summary>
-        public override Job2 GetJobBySessionId(int id, bool recurse)
+        public override Job2? GetJobBySessionId(int id, bool recurse)
         {
             foreach (var job in _repository.Values)
             {
@@ -248,7 +244,7 @@ namespace ThreadJob
         /// </summary>
         public override IList<Job2> GetJobsByState(JobState state, bool recurse)
         {
-            List<Job2> rtnList = new List<Job2>();
+            var rtnList = new List<Job2>();
             foreach (var job in _repository.Values)
             {
                 if (job.JobStateInfo.State == state)
@@ -272,11 +268,10 @@ namespace ThreadJob
         /// </summary>
         public override void RemoveJob(Job2 job)
         {
-            Job2 removeJob;
-            if (_repository.TryGetValue(job.InstanceId, out removeJob))
+            if (_repository.TryGetValue(job.InstanceId, out var removeJob))
             {
                 removeJob.StopJob();
-                _repository.TryRemove(job.InstanceId, out removeJob);
+                _repository.TryRemove(job.InstanceId, out _);
             }
         }
 
@@ -287,25 +282,22 @@ namespace ThreadJob
     {
         #region Members
 
-        private Debugger _wrappedDebugger;
-        private string _jobName;
+        private readonly Debugger _wrappedDebugger;
+        private readonly string _jobName;
 
         #endregion
 
         #region Constructor
 
+#pragma warning disable CS8618
         private ThreadJobDebugger() { }
+#pragma warning restore CS8618
 
         public ThreadJobDebugger(
             Debugger debugger,
             string jobName)
         {
-            if (debugger == null)
-            {
-                throw new PSArgumentNullException("debugger");
-            }
-
-            _wrappedDebugger = debugger;
+            _wrappedDebugger = debugger ?? throw new PSArgumentNullException(nameof(debugger));
             _jobName = jobName ?? string.Empty;
 
             // Create handlers for wrapped debugger events.
@@ -430,12 +422,12 @@ namespace ThreadJob
 
         #region Private methods
 
-        private void HandleDebuggerStop(object sender, DebuggerStopEventArgs e)
+        private void HandleDebuggerStop(object? sender, DebuggerStopEventArgs e)
         {
             this.RaiseDebuggerStopEvent(e);
         }
 
-        private void HandleBreakpointUpdated(object sender, BreakpointUpdatedEventArgs e)
+        private void HandleBreakpointUpdated(object? sender, BreakpointUpdatedEventArgs e)
         {
             this.RaiseBreakpointUpdatedEvent(e);
         }
@@ -444,8 +436,14 @@ namespace ThreadJob
         {
             // Nested debugged runspace prompt should look like:
             // [DBG]: [JobName]: PS C:\>>
-            string promptScript = "'[DBG]: '" + " + " + "'[" + CodeGeneration.EscapeSingleQuotedStringContent(_jobName) + "]: '" + " + " + @"""PS $($executionContext.SessionState.Path.CurrentLocation)>> """;
-            PSCommand promptCommand = new PSCommand();
+            var promptScript = "'[DBG]: '"
+                               + " + "
+                               + "'["
+                               + CodeGeneration.EscapeSingleQuotedStringContent(_jobName)
+                               + "]: '"
+                               + " + "
+                               + @"""PS $($executionContext.SessionState.Path.CurrentLocation)>> """;
+            var promptCommand = new PSCommand();
             promptCommand.AddScript(promptScript);
             _wrappedDebugger.ProcessCommand(promptCommand, output);
 
@@ -462,23 +460,23 @@ namespace ThreadJob
     {
         #region Private members
 
-        private ScriptBlock _sb;
-        private string _filePath;
-        private ScriptBlock _initSb;
-        private object[] _argumentList;
-        private Dictionary<string, object> _usingValuesMap;
-        private PSDataCollection<object> _input;
-        private Runspace _rs;
-        private PowerShell _ps;
-        private PSDataCollection<PSObject> _output;
+        private readonly ScriptBlock _sb;
+        private readonly string? _filePath;
+        private readonly ScriptBlock? _initSb;
+        private readonly object[]? _argumentList;
+        private readonly Dictionary<string, object>? _usingValuesMap;
+        private readonly PSDataCollection<object> _input;
+        private readonly Runspace _rs;
+        private readonly PowerShell _ps;
+        private readonly PSDataCollection<PSObject> _output;
         private bool _runningInitScript;
-        private PSHost? _streamingHost;
-        private Debugger _jobDebugger;
-        private string? _currentLocationPath;
+        private readonly PSHost? _streamingHost;
+        private Debugger? _jobDebugger;
+        private readonly string? _currentLocationPath;
 
         private const string VERBATIM_ARGUMENT = "--%";
 
-        private static ThreadJobQueue s_JobQueue;
+        private static readonly ThreadJobQueue s_JobQueue;
 
         #endregion
 
@@ -503,34 +501,9 @@ namespace ThreadJob
             s_JobQueue = new ThreadJobQueue(5);
         }
 
-        private ThreadJob()
-        { }
-
-        /// <summary>
-        /// Constructor.
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="command"></param>
-        /// <param name="sb"></param>
-        /// <param name="filePath"></param>
-        /// <param name="initSb"></param>
-        /// <param name="argumentList"></param>
-        /// <param name="inputObject"></param>
-        /// <param name="psCmdlet"></param>
-        /// <param name="currentLocationPath"></param>
-        public ThreadJob(
-            string name,
-            string? command,
-            ScriptBlock sb,
-            string filePath,
-            ScriptBlock initSb,
-            object[] argumentList,
-            PSObject inputObject,
-            PSCmdlet psCmdlet,
-            string? currentLocationPath)
-            : this(name, command, sb, filePath, initSb, argumentList, inputObject, psCmdlet, currentLocationPath, null)
-        {
-        }
+#pragma warning disable CS8618
+        private ThreadJob() { }
+#pragma warning restore CS8618
 
         /// <summary>
         /// Constructor.
@@ -546,19 +519,18 @@ namespace ThreadJob
         /// <param name="currentLocationPath"></param>
         /// <param name="streamingHost"></param>
         public ThreadJob(
-            string name,
-            string? command,
-            ScriptBlock sb,
-            string filePath,
-            ScriptBlock initSb,
-            object[] argumentList,
-            PSObject inputObject,
+            string? name,
+            string command,
+            ScriptBlock? sb,
+            string? filePath,
+            ScriptBlock? initSb,
+            object[]? argumentList,
+            PSObject? inputObject,
             PSCmdlet psCmdlet,
             string? currentLocationPath,
             PSHost? streamingHost)
             : base(command, name)
         {
-            _sb = sb;
             _filePath = filePath;
             _initSb = initSb;
             _argumentList = argumentList;
@@ -577,21 +549,15 @@ namespace ThreadJob
             if (!string.IsNullOrEmpty(_filePath))
             {
                 _sb = GetScriptBlockFromFile(_filePath, psCmdlet);
-                if (_sb == null)
-                {
-                    throw new InvalidOperationException(Properties.Resources.CannotParseScriptFile);
-                }
             }
-            else if (_sb == null)
-            {
-                throw new PSArgumentNullException(Properties.Resources.NoScriptToRun);
-            }
+            else _sb = sb!;
 
             // Create Runspace/PowerShell object and state callback.
             // The job script/command will run in a separate thread associated with the Runspace.
             var iss = InitialSessionState.CreateDefault2();
 
             // Determine session language mode for Windows platforms
+#if !NETCOREAPP
             WarningRecord lockdownWarning = null;
             if (Environment.OSVersion.Platform.ToString().Equals("Win32NT", StringComparison.OrdinalIgnoreCase))
             {
@@ -609,13 +575,14 @@ namespace ThreadJob
                         lockdownWarning = new WarningRecord(
                             string.Format(
                                 CultureInfo.InvariantCulture,
-                                Properties.Resources.CannotRunTrustedFileInFL,
+                                PSThreadJobResources.CannotRunTrustedFileInFL,
                                 _filePath));
                     }
                 }
 
                 iss.LanguageMode = enforceLockdown ? PSLanguageMode.ConstrainedLanguage : PSLanguageMode.FullLanguage;
             }
+#endif
 
             if (_streamingHost != null)
             {
@@ -639,11 +606,11 @@ namespace ThreadJob
                         break;
 
                     case PSInvocationState.Stopped:
-                        SetJobState(JobState.Stopped, newStateInfo.Reason, disposeRunspace:true);
+                        SetJobState(JobState.Stopped, newStateInfo.Reason, disposeRunspace: true);
                         break;
 
                     case PSInvocationState.Failed:
-                        SetJobState(JobState.Failed, newStateInfo.Reason, disposeRunspace:true);
+                        SetJobState(JobState.Failed, newStateInfo.Reason, disposeRunspace: true);
                         break;
 
                     case PSInvocationState.Completed:
@@ -655,7 +622,7 @@ namespace ThreadJob
                         }
                         else
                         {
-                            SetJobState(JobState.Completed, newStateInfo.Reason, disposeRunspace:true);
+                            SetJobState(JobState.Completed, newStateInfo.Reason, disposeRunspace: true);
                         }
                         break;
                 }
@@ -685,10 +652,6 @@ namespace ThreadJob
 
             this.Warning = _ps.Streams.Warning;
             this.Warning.EnumeratorNeverBlocks = true;
-            if (lockdownWarning != null)
-            {
-                this.Warning.Add(lockdownWarning);
-            }
 
             this.Debug = _ps.Streams.Debug;
             this.Debug.EnumeratorNeverBlocks = true;
@@ -696,10 +659,18 @@ namespace ThreadJob
             this.Information = _ps.Streams.Information;
             this.Information.EnumeratorNeverBlocks = true;
 
+#if !NETCOREAPP
+            if (lockdownWarning != null)
+            {
+                this.Warning.Add(lockdownWarning);
+            }
+#endif
+
             // Create the JobManager job definition and job specification, and add to the JobManager.
             ThreadJobDefinition = new JobDefinition(typeof(ThreadJobSourceAdapter), "", Name);
-            Dictionary<string, object> parameterCollection = new Dictionary<string, object>();
-            parameterCollection.Add("NewJob", this);
+            var parameterCollection = new Dictionary<string, object> {
+                { nameof(psCmdlet.JobManager.NewJob), this }
+            };
             var jobSpecification = new JobInvocationInfo(ThreadJobDefinition, parameterCollection);
             var newJob = psCmdlet.JobManager.NewJob(jobSpecification);
             System.Diagnostics.Debug.Assert(newJob == this, "JobManager must return this job");
@@ -716,7 +687,7 @@ namespace ThreadJob
         {
             if (this.JobStateInfo.State != JobState.NotStarted)
             {
-                throw new Exception(Properties.Resources.CannotStartJob);
+                throw new Exception(PSThreadJobResources.CannotStartJob);
             }
 
             // Initialize Runspace state
@@ -725,11 +696,9 @@ namespace ThreadJob
             // Set current location path on the runspace, if available.
             if (_currentLocationPath != null)
             {
-                using (var ps = PowerShell.Create())
-                {
-                    ps.Runspace = _rs;
-                    ps.AddCommand("Set-Location").AddParameter("LiteralPath", _currentLocationPath).Invoke();
-                }
+                using var ps = PowerShell.Create();
+                ps.Runspace = _rs;
+                ps.AddCommand("Set-Location").AddParameter("LiteralPath", _currentLocationPath).Invoke();
             }
 
             // If initial script block provided then execute.
@@ -739,7 +708,7 @@ namespace ThreadJob
                 _ps.Commands.Clear();
                 _ps.AddScript(_initSb.ToString());
                 _runningInitScript = true;
-                _ps.BeginInvoke<object, PSObject>(_input, _output);
+                _ps.BeginInvoke(_input, _output);
             }
             else
             {
@@ -858,7 +827,7 @@ namespace ThreadJob
             }
             catch (PSInvalidOperationException)
             {
-                // Ignore.  Thrown if Error collection is closed (race condition.).
+                // Ignore. Thrown if Error collection is closed (race condition.).
             }
         }
 
@@ -1001,7 +970,7 @@ namespace ThreadJob
         /// <summary>
         /// Job Debugger
         /// </summary>
-        public Debugger Debugger
+        public Debugger? Debugger
         {
             get
             {
@@ -1047,28 +1016,25 @@ namespace ThreadJob
                 _ps.AddParameter(VERBATIM_ARGUMENT, _usingValuesMap);
             }
 
-            _ps.BeginInvoke<object, PSObject>(_input, _output);
+            _ps.BeginInvoke(_input, _output);
         }
 
         private ScriptBlock GetScriptBlockFromFile(string filePath, PSCmdlet psCmdlet)
         {
             if (WildcardPattern.ContainsWildcardCharacters(filePath))
             {
-                throw new ArgumentException(Properties.Resources.FilePathWildcards);
+                throw new ArgumentException(PSThreadJobResources.FilePathWildcards);
             }
 
             if (!filePath.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
             {
-                throw new ArgumentException(Properties.Resources.FilePathExt);
+                throw new ArgumentException(PSThreadJobResources.FilePathExt);
             }
 
-            ProviderInfo provider = null;
-            string resolvedPath = psCmdlet.GetResolvedProviderPathFromPSPath(filePath, out provider).FirstOrDefault();
+            var resolvedPath = psCmdlet.GetResolvedProviderPathFromPSPath(filePath, out _).FirstOrDefault();
             if (!string.IsNullOrEmpty(resolvedPath))
             {
-                Token[] tokens;
-                ParseError[] errors;
-                ScriptBlockAst scriptBlockAst = Parser.ParseFile(resolvedPath, out tokens, out errors);
+                ScriptBlockAst scriptBlockAst = Parser.ParseFile(resolvedPath, out _, out ParseError[] errors);
                 if (scriptBlockAst != null && errors.Length == 0)
                 {
                     return scriptBlockAst.GetScriptBlock();
@@ -1082,7 +1048,7 @@ namespace ThreadJob
                 }
             }
 
-            return null;
+            throw new InvalidOperationException(PSThreadJobResources.CannotParseScriptFile);
         }
 
         private void SetJobState(JobState jobState, Exception reason, bool disposeRunspace = false)
@@ -1096,15 +1062,14 @@ namespace ThreadJob
 
         private static Dictionary<string, object> GetUsingValuesAsDictionary(IEnumerable<UsingExpressionAst> usingAsts, PSCmdlet psCmdlet)
         {
-            Dictionary<string, object> usingValues = new Dictionary<string, object>();
+            Dictionary<string, object> usingValues = new();
 
             foreach (var usingAst in usingAsts)
             {
-                var varAst = usingAst.SubExpression as VariableExpressionAst;
-                if (varAst == null)
+                if (usingAst.SubExpression is not VariableExpressionAst varAst)
                 {
                     var msg = string.Format(CultureInfo.InvariantCulture,
-                        Properties.Resources.UsingNotVariableExpression,
+                        PSThreadJobResources.UsingNotVariableExpression,
                         new object[] { usingAst.Extent.Text });
                     throw new PSInvalidOperationException(msg);
                 }
@@ -1121,7 +1086,7 @@ namespace ThreadJob
                 catch (Exception ex)
                 {
                     var msg = string.Format(CultureInfo.InvariantCulture,
-                        Properties.Resources.UsingVariableNotFound,
+                        PSThreadJobResources.UsingVariableNotFound,
                         new object[] { usingAst.Extent.Text });
                     throw new PSInvalidOperationException(msg, ex);
                 }
@@ -1139,7 +1104,7 @@ namespace ThreadJob
         /// <returns>Base64 encoded string as the key of the UsingExpressionAst</returns>
         private static string GetUsingExpressionKey(UsingExpressionAst usingAst)
         {
-            string usingAstText = usingAst.ToString();
+            var usingAstText = usingAst.ToString();
             if (usingAst.SubExpression is VariableExpressionAst)
             {
                 usingAstText = usingAstText.ToLowerInvariant();
@@ -1159,12 +1124,12 @@ namespace ThreadJob
         #region Private members
 
         // Private members
-        ConcurrentQueue<ThreadJob> _jobQueue = new ConcurrentQueue<ThreadJob>();
-        object _syncObject = new object();
+        ConcurrentQueue<ThreadJob> _jobQueue = new();
+        object _syncObject = new();
         int _throttleLimit = 5;
         int _currentJobs;
         bool _haveRunningJobs;
-        private ManualResetEvent _processJobsHandle = new ManualResetEvent(true);
+        private ManualResetEvent _processJobsHandle = new(true);
 
         #endregion
 
@@ -1240,7 +1205,7 @@ namespace ThreadJob
         {
             if (job == null)
             {
-                throw new ArgumentNullException("job");
+                throw new ArgumentNullException(nameof(job));
             }
 
             ThrottleLimit = throttleLimit;
@@ -1258,7 +1223,7 @@ namespace ThreadJob
                 if (_jobQueue.Count > 0)
                 {
                     _haveRunningJobs = true;
-                    System.Threading.ThreadPool.QueueUserWorkItem(new WaitCallback(ServiceJobs));
+                    ThreadPool.QueueUserWorkItem(new WaitCallback(ServiceJobs));
                 }
             }
         }
@@ -1267,15 +1232,15 @@ namespace ThreadJob
 
         #region Private methods
 
-        private void HandleJobStateChanged(object sender, JobStateEventArgs e)
+        private void HandleJobStateChanged(object? sender, JobStateEventArgs e)
         {
-            ThreadJob job = sender as ThreadJob;
             JobState state = e.JobStateInfo.State;
             if (state == JobState.Completed ||
                 state == JobState.Stopped ||
                 state == JobState.Failed)
             {
-                job.StateChanged -= new EventHandler<JobStateEventArgs>(HandleJobStateChanged);
+                if (sender is ThreadJob job)
+                    job.StateChanged -= new EventHandler<JobStateEventArgs>(HandleJobStateChanged);
                 DecrementCurrentJobs();
             }
         }
@@ -1303,7 +1268,7 @@ namespace ThreadJob
             }
         }
 
-        private void ServiceJobs(object toProcess)
+        private void ServiceJobs(object? toProcess)
         {
             while (true)
             {
@@ -1318,8 +1283,7 @@ namespace ThreadJob
 
                 _processJobsHandle.WaitOne();
 
-                ThreadJob job;
-                if (_jobQueue.TryDequeue(out job))
+                if (_jobQueue.TryDequeue(out var job))
                 {
                     try
                     {

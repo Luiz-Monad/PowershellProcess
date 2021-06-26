@@ -1,5 +1,4 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
 using Nito.AsyncEx.Synchronous;
 
 namespace Nito.AsyncEx
@@ -41,7 +40,7 @@ namespace Nito.AsyncEx
             /// </summary>
             /// <param name="d">The <see cref="SendOrPostCallback"/> delegate to call. May not be <c>null</c>.</param>
             /// <param name="state">The object passed to the delegate.</param>
-            public override void Post(SendOrPostCallback d, object state)
+            public override void Post(SendOrPostCallback d, object? state)
             {
                 _context.Enqueue(_context._taskFactory.Run(() => d(state)), true);
             }
@@ -51,7 +50,7 @@ namespace Nito.AsyncEx
             /// </summary>
             /// <param name="d">The <see cref="SendOrPostCallback"/> delegate to call. May not be <c>null</c>.</param>
             /// <param name="state">The object passed to the delegate.</param>
-            public override void Send(SendOrPostCallback d, object state)
+            public override void Send(SendOrPostCallback d, object? state)
             {
                 if (AsyncContext.Current == _context)
                 {
@@ -103,7 +102,7 @@ namespace Nito.AsyncEx
             /// </summary>
             /// <param name="obj">The <see cref="System.Object"/> to compare with this instance.</param>
             /// <returns><c>true</c> if the specified <see cref="System.Object"/> is equal to this instance; otherwise, <c>false</c>.</returns>
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
             {
                 var other = obj as AsyncContextSynchronizationContext;
                 if (other == null)

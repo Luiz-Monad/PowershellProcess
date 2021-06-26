@@ -1,17 +1,16 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Management.Automation;
+using System.Management.Automation.Language;
 using System.Net;
+using System.Text;
 using System.Threading;
-using System.Diagnostics;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nito.AsyncEx;
-using System.Text;
-using System.Management.Automation.Language;
-using System.Management.Automation.Runspaces;
 
 namespace PowerProcess
 {
@@ -27,7 +26,7 @@ namespace PowerProcess
     ///   Correct treatment of argument lists (just use Sys.Diag.Proc).
     ///   Possibility of merging Out and Error at the source.
     /// </remarks>
-    [Cmdlet(VerbsLifecycle.Invoke, "ProcessFast", DefaultParameterSetName = "Default", SupportsShouldProcess = true, HelpUri = "https://go.microsoft.com/fwlink/?LinkID=2097141")]
+    [Cmdlet(VerbsLifecycle.Invoke, "ProcessFast", SupportsShouldProcess = true, HelpUri = "https://go.microsoft.com/fwlink/?LinkID=2097141")]
     [OutputType(typeof(Process))]
     public sealed class InvokeProcessFastCommand : PSCmdlet, IDisposable
     {
@@ -36,11 +35,15 @@ namespace PowerProcess
         private CancellationTokenSource? _cancellationSource = null;
 
         #region Parameters
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+
+        private const string DefaultParameterSet = "ScriptBlock";
+        private const string WinEnvParameterSet = "WinEnv";
 
         /// <summary>
         /// Path/FileName of the process to start.
         /// </summary>
-        [Parameter(Mandatory = true, Position = 0)]
+        [Parameter(ParameterSetName = DefaultParameterSet, Mandatory = true, Position = 0)]
         [ValidateNotNullOrEmpty]
         [Alias("PSPath", "Path")]
         public string FilePath { get; set; }
@@ -48,31 +51,30 @@ namespace PowerProcess
         /// <summary>
         /// Arguments for the process.
         /// </summary>
-        [Parameter(Position = 1)]
+        [Parameter(ParameterSetName = DefaultParameterSet, Position = 1)]
         [Alias("Args")]
-        [SuppressMessage("Microsoft.Performance", "CA1819:PropertiesShouldNotReturnArrays")]
-        public string[] ArgumentList { get; set; }
+        public string[]? ArgumentList { get; set; }
 
         /// <summary>
         /// Credentials for the process.
         /// </summary>
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = WinEnvParameterSet)]
         [Alias("RunAs")]
         [ValidateNotNullOrEmpty]
         [Credential]
-        public PSCredential Credential { get; set; }
+        public PSCredential? Credential { get; set; }
 
         /// <summary>
         /// Working directory of the process.
         /// </summary>
-        [Parameter]
+        [Parameter(ParameterSetName = DefaultParameterSet)]
         [ValidateNotNullOrEmpty]
-        public string WorkingDirectory { get; set; }
+        public string? WorkingDirectory { get; set; }
 
         /// <summary>
         /// Load user profile from registry.
         /// </summary>
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = WinEnvParameterSet)]
         [Alias("Lup")]
         public SwitchParameter LoadUserProfile { get; set; }
 
@@ -112,15 +114,16 @@ namespace PowerProcess
         /// <summary>
         /// Default Environment.
         /// </summary>
-        [Parameter(ParameterSetName = "Default")]
+        [Parameter(ParameterSetName = WinEnvParameterSet)]
         public SwitchParameter UseNewEnvironment { get; set; }
 
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
         #endregion
 
         #region Pipeline
 
         [Parameter(ValueFromPipeline = true)]
-        public string InputObject { get; set; }
+        public string? InputObject { get; set; }
 
         /// <summary>
         /// Buffer the output stream.
@@ -138,12 +141,12 @@ namespace PowerProcess
         protected override void BeginProcessing()
         {
 
-            ProcessStartInfo startInfo = new ProcessStartInfo();
+            ProcessStartInfo startInfo = new();
 
             // Path = Mandatory parameter -> Will not be empty.
             try
             {
-                CommandInfo cmdinfo = base.InvokeCommand.GetCommand(
+                var cmdinfo = base.InvokeCommand.GetCommand(
                     FilePath, CommandTypes.Application | CommandTypes.ExternalScript);
                 startInfo.FileName = cmdinfo.Definition;
             }
@@ -166,8 +169,8 @@ namespace PowerProcess
                 WorkingDirectory = ResolveFilePath(WorkingDirectory);
                 if (!Directory.Exists(WorkingDirectory))
                 {
-                    var message = StringUtil.Format(ProcessResources.InvalidInput, "WorkingDirectory");
-                    ErrorRecord er = new ErrorRecord(new DirectoryNotFoundException(message), "DirectoryNotFoundException", ErrorCategory.InvalidOperation, null);
+                    var message = StringUtil.Format(ProcessResources.InvalidInput, nameof(WorkingDirectory));
+                    var er = new ErrorRecord(new DirectoryNotFoundException(message), nameof(DirectoryNotFoundException), ErrorCategory.InvalidOperation, null);
                     WriteError(er);
                     return;
                 }
@@ -180,7 +183,7 @@ namespace PowerProcess
                 startInfo.WorkingDirectory = base.SessionState.Path.CurrentFileSystemLocation.Path;
             }
 
-            if (this.ParameterSetName.Equals("Default"))
+            if (this.ParameterSetName.Equals(WinEnvParameterSet))
             {
                 startInfo.UseShellExecute = false;
 
@@ -193,8 +196,8 @@ namespace PowerProcess
 
                 startInfo.CreateNoWindow = true;
 #if !UNIX
+#pragma warning disable CA1416 // Validate platform compatibility
                 startInfo.LoadUserProfile = LoadUserProfile;
-#endif
                 if (Credential != null)
                 {
                     NetworkCredential nwcredential = Credential.GetNetworkCredential();
@@ -210,7 +213,8 @@ namespace PowerProcess
 
                     startInfo.Password = Credential.Password;
                 }
-
+#pragma warning restore CA1416 // Validate platform compatibility
+#endif
             }
 
             string targetMessage = StringUtil.Format(ProcessResources.StartProcessTarget, startInfo.FileName, startInfo.Arguments.Trim());
@@ -227,7 +231,7 @@ namespace PowerProcess
                 else
                 {
                     var message = StringUtil.Format(ProcessResources.CannotStartTheProcess);
-                    ErrorRecord er = new ErrorRecord(new InvalidOperationException(message), "InvalidOperationException", ErrorCategory.InvalidOperation, null);
+                    var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
                     ThrowTerminatingError(er);
                 }
             }
@@ -241,20 +245,20 @@ namespace PowerProcess
                     if (!_process.HasExited)
                     {
                         ProduceNativeProcessInput(_process);
-                        ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
+                        ConsumeAvailableNativeProcessOutput(blocking: true, p: _process, ct: _cancellationSource.Token);
                         _process.WaitForExit();
                         SetLastExitCode(_process);
                     }
                     else
                     {
-                        ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
+                        ConsumeAvailableNativeProcessOutput(blocking: true, p: _process, ct: _cancellationSource.Token);
                         SetLastExitCode(_process);
                     }
                 }
                 else
                 {
                     var message = StringUtil.Format(ProcessResources.CannotStartTheProcess);
-                    ErrorRecord er = new ErrorRecord(new InvalidOperationException(message), "InvalidOperationException", ErrorCategory.InvalidOperation, null);
+                    var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
                     ThrowTerminatingError(er);
                 }
             }
@@ -278,12 +282,12 @@ namespace PowerProcess
             if (_process != null && _cancellationSource != null)
             {
                 ProduceNativeProcessInput(_process);
-                ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: false);
+                ConsumeAvailableNativeProcessOutput(blocking: false, p: _process, ct: _cancellationSource.Token);
             }
             else
             {
                 var message = StringUtil.Format(ProcessResources.ProcessIsNotStarted);
-                ErrorRecord er = new ErrorRecord(new InvalidOperationException(message), "InvalidOperationException", ErrorCategory.InvalidOperation, null);
+                var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
                 ThrowTerminatingError(er);
             }
         }
@@ -308,7 +312,7 @@ namespace PowerProcess
             else
             {
                 var message = StringUtil.Format(ProcessResources.ProcessIsNotTerminated);
-                ErrorRecord er = new ErrorRecord(new InvalidOperationException(message), "InvalidOperationException", ErrorCategory.InvalidOperation, null);
+                var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
                 ThrowTerminatingError(er);
             }
         }
@@ -442,7 +446,7 @@ namespace PowerProcess
         /// <summary>
         /// Read the output from the native process and send it down the line.
         /// </summary>
-        private void ConsumeAvailableNativeProcessOutput(Process p, CancellationToken ct, bool blocking)
+        private void ConsumeAvailableNativeProcessOutput(bool blocking, Process p, CancellationToken ct)
         {
             if (DontRedirectOutputs) return;
             var _buffer = OutputBuffer ?? 256;
@@ -470,7 +474,7 @@ namespace PowerProcess
                             tasks[i] ??= streams[i].ReadLineAsync();
                         }
                         // wait
-                        str = await Task.WhenAny(tasks).Result;
+                        str = await Task.WhenAny(tasks!).Result;
                         // for each stream
                         for (var i = 0; i < streams.Length; i++)
                         {
@@ -607,33 +611,6 @@ namespace PowerProcess
         private void SetLastExitCode(Process process)
         {
             base.SessionState.PSVariable.Set("LASTEXITCODE", process.ExitCode);
-        }
-
-        #endregion
-
-        #region Inner powershell
-
-        private static void PsRun(Func<Task> task, CancellationToken ct)
-        {
-            var iss = InitialSessionState.CreateDefault2();
-            iss.ThreadOptions = PSThreadOptions.UseNewThread;
-            var rs = RunspaceFactory.CreateRunspace(iss);
-            rs.StateChanged += (sender, psStateChanged) =>
-            {
-                var newStateInfo = psStateChanged.RunspaceStateInfo;
-
-                // Update Job state.
-                switch (newStateInfo.State)
-                {
-                    case RunspaceState.Opened:
-                        Thread.CurrentThread.Name = "InvokeProcessFast";
-                        var p = rs.CreatePipeline();
-                        p.
-                        AsyncContext.Run(task, ct);
-                        break;
-                }
-            };
-            rs.OpenAsync();
         }
 
         #endregion
