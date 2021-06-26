@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Management.Automation;
 using System.Management.Automation.Language;
@@ -233,43 +232,37 @@ namespace PowerProcess
                     var message = StringUtil.Format(ProcessResources.CannotStartTheProcess);
                     var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
                     ThrowTerminatingError(er);
+                    return;
                 }
             }
 
             _cancellationSource = new CancellationTokenSource();
 
-            if (Wait.IsPresent)
+            if (!Wait.IsPresent)
             {
-                if (_process != null)
+                return;
+            }
+
+            if (_process != null)
+            {
+                if (_process.HasExited)
                 {
-                    if (!_process.HasExited)
-                    {
-                        ProduceNativeProcessInput(_process);
-                        ConsumeAvailableNativeProcessOutput(blocking: true, p: _process, ct: _cancellationSource.Token);
-                        _process.WaitForExit();
-                        SetLastExitCode(_process);
-                    }
-                    else
-                    {
-                        ConsumeAvailableNativeProcessOutput(blocking: true, p: _process, ct: _cancellationSource.Token);
-                        SetLastExitCode(_process);
-                    }
+                    ConsumeAvailableNativeProcessOutput(blocking: true, _process, _cancellationSource.Token);
+                    SetLastExitCode(_process);
+                    _process = null;
                 }
                 else
-                {
-                    var message = StringUtil.Format(ProcessResources.CannotStartTheProcess);
-                    var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
-                    ThrowTerminatingError(er);
-                }
-            }
-            else
-            {
-                if (_process != null)
                 {
                     _process.Exited += myProcess_Exited;
                     _process.EnableRaisingEvents = true;
                     _waitHandle = new ManualResetEvent(false);
                 }
+            }
+            else
+            {
+                var message = StringUtil.Format(ProcessResources.CannotStartTheProcess);
+                var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
+                ThrowTerminatingError(er);
             }
         }
 
@@ -278,11 +271,10 @@ namespace PowerProcess
         /// </summary>
         protected override void ProcessRecord()
         {
-            if (Wait.IsPresent) return;
+            if (!base.MyInvocation.ExpectingInput) return;
             if (_process != null && _cancellationSource != null)
             {
                 ProduceNativeProcessInput(_process);
-                ConsumeAvailableNativeProcessOutput(blocking: false, p: _process, ct: _cancellationSource.Token);
             }
             else
             {
@@ -297,23 +289,31 @@ namespace PowerProcess
         /// </summary>
         protected override void EndProcessing()
         {
-            if (Wait.IsPresent || _process == null || _cancellationSource == null) return;
+            if (_process == null || _cancellationSource == null) return;
 
-            //ConsumeAvailableNativeProcessOutput(_process, _cancellationSource.Token, blocking: true);
-
-            if (_waitHandle != null)
+            if (Wait.IsPresent && _waitHandle != null)
             {
+                ConsumeAvailableNativeProcessOutput(blocking: true, _process, _cancellationSource.Token);
+
                 _waitHandle.WaitOne();
-            }
-            if (_process.HasExited)
-            {
-                SetLastExitCode(_process);
+
+                if (_process.HasExited)
+                {
+                    SetLastExitCode(_process);
+                }
+                else
+                {
+                    var message = StringUtil.Format(ProcessResources.ProcessIsNotTerminated);
+                    var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
+                    ThrowTerminatingError(er);
+                }
             }
             else
             {
-                var message = StringUtil.Format(ProcessResources.ProcessIsNotTerminated);
-                var er = new ErrorRecord(new InvalidOperationException(message), nameof(InvalidOperationException), ErrorCategory.InvalidOperation, null);
-                ThrowTerminatingError(er);
+                var p = _process;
+                _process = null; //suppress finalize
+                ConsumeAvailableNativeProcessOutput(blocking: false, p, _cancellationSource.Token);
+                SetLastExitCode(0);
             }
         }
 
@@ -439,7 +439,6 @@ namespace PowerProcess
         /// </summary>
         private void ProduceNativeProcessInput(Process p)
         {
-            if (!base.MyInvocation.ExpectingInput) return;
             p.StandardInput.WriteLine(InputObject);
         }
 
@@ -452,16 +451,45 @@ namespace PowerProcess
             var _buffer = OutputBuffer ?? 256;
             var _merge = MergeStandardErrorToOutput.ToBool();
             var _wrap = WrapOutputStream.ToBool();
+            var _sing = _buffer == 1;
             var _task = infer(async () =>
             {
                 var _out = p.StandardOutput;
                 var _err = p.StandardError;
-                var lstOut = _wrap ? null : mkList<String>(_buffer);
-                var lstErr = _wrap ? null : mkList<String>(_buffer);
-                var lstWrap = _wrap ? mkList<WrapObject>(_buffer) : null;
+
                 var streams = new[] { _out, _err };
-                var redir = new[] { false, _merge };
                 var tasks = new Task<string?>?[2] { null, null };
+
+                // calculate redirect
+                var src = new[]
+                {
+                   _wrap ? WrapSource.Out : (_sing ? WrapSource.PSO : WrapSource.Str),
+                   _wrap ? WrapSource.Err : (_sing ? WrapSource.MKE : WrapSource.Str),
+                };
+                var tgt = new[]
+                {
+                   _sing ? RedirTarget.Out : RedirTarget.Lst,
+                   _sing ? RedirTarget.Err : RedirTarget.Lst,
+                };
+                var lst_tgt = new[]
+                {
+                   RedirTarget.Out,
+                   RedirTarget.Err,
+                };
+                var wlst = _wrap ? NewList<Object>(_buffer) : null;
+                var lst = new[]
+                {
+                    _sing ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
+                    _sing ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
+                };
+                if (_merge)
+                {
+                    tgt[1] = tgt[0];
+                    lst[1] = lst[0];
+                    lst_tgt[1] = lst_tgt[0];
+                }
+
+                // stream
                 string? str = null;
                 do
                 {
@@ -488,40 +516,17 @@ namespace PowerProcess
                             if (r == null) continue;
 
                             // now redirect
-                            if (redir[i])
-                            {
-                                if (_buffer == 1 && _wrap) base.WriteObject(WrapObject.Output(r));
-                                else if (_buffer == 1) base.WriteObject(PSObject.AsPSObject(r));
-                                else if (_wrap) lstWrap!.Add(WrapObject.Output(r));
-                                else lstOut!.Add(r);
-                            }
-                            else
-                            {
-                                if (_buffer == 1 && _wrap) base.WriteObject(WrapObject.Error(r));
-                                else if (_buffer == 1) base.WriteError(mkError(r));
-                                if (_wrap) lstWrap!.Add(WrapObject.Error(r));
-                                else lstErr!.Add(r);
-                            }
+                            RedirectMessage(r, src[i], tgt[i], lst[i]);
                             count++;
                         }
                         // until buffer full or end of any streams
                     } while (count < _buffer && str != null);
 
                     // send collected results for each stream respectively
-                    if (_wrap && lstWrap!.Count > 0)
+                    for (var i = 0; i < streams.Length; i++)
                     {
-                        base.WriteObject(lstWrap);
-                        lstWrap.Clear();
-                    }
-                    if (!_wrap && lstOut!.Count > 0)
-                    {
-                        base.WriteObject(PSObject.AsPSObject(lstOut));
-                        lstOut.Clear();
-                    }
-                    if (!_wrap && lstErr!.Count > 0)
-                    {
-                        base.WriteError(mkError(lstErr));
-                        lstErr.Clear();
+                        if (lst[i] == null) continue;
+                        RedirectList(lst[i]!, lst_tgt[i]);
                     }
 
                     // until end of all streams
@@ -533,19 +538,89 @@ namespace PowerProcess
             }
             else
             {
-                PsRun(_task, ct);
+                var cts = new CancellationTokenSource();
+                var job = new TaskJob(
+                    this,
+                    p.ProcessName,
+                    () => AsyncContext.Run(_task, cts.Token),
+                    cts);
+                cts.Token.Register(() =>
+                {
+                    if (!p.HasExited)
+                    {
+                        p.Kill(true);
+                    }
+                    p.Dispose();
+                });
+                job.StartJobAsync();
             }
+        }
+
+        private void RedirectMessage(
+            string message,
+            WrapSource source,
+            RedirTarget target,
+            IList? lst)
+        {
+            var m = message;
+            object? o = null;
+            switch (source)
+            {
+                case WrapSource.Str: o = m; break;
+                case WrapSource.Out: o = WrapObject.Output(m); break;
+                case WrapSource.Err: o = WrapObject.Error(m); break;
+                case WrapSource.PSO: o = PSObject.AsPSObject(m); break;
+                case WrapSource.MKE: o = MakeError(m); break;
+            }
+            switch (target)
+            {
+                case RedirTarget.Out: base.WriteObject(o); break;
+                case RedirTarget.Err: base.WriteError(MakeError(m)); break;
+                case RedirTarget.Lst: lst!.Add(o!); break;
+            }
+        }
+
+        private void RedirectList(
+            object lst,
+            RedirTarget target)
+        {
+            var l = (IList)lst;
+            if (l.Count == 0) return;
+            switch (target)
+            {
+                case RedirTarget.Out: base.WriteObject(PSObject.AsPSObject(lst)); break;
+                case RedirTarget.Err: base.WriteError(MakeError((List<String>)lst)); break;
+                case RedirTarget.Lst: throw new InvalidOperationException();
+            }
+            l.Clear();
+        }
+
+        private enum WrapSource
+        {
+            Str = 0,
+            Out = 1,
+            Err = 2,
+            PSO = 3,
+            MKE = 4,
+        }
+
+        private enum RedirTarget
+        {
+            Lst = 0,
+            Out = 1,
+            Err = 2,
         }
 
         #endregion
 
         #region Helpers
 
-        private ErrorRecord mkError(string message)
+        private static ErrorRecord MakeError(string message)
         {
             return new ErrorRecord(new StdErr(message), null, ErrorCategory.FromStdErr, null);
         }
-        private ErrorRecord mkError(List<string> messages)
+
+        private static ErrorRecord MakeError(List<string> messages)
         {
             return new ErrorRecord(new StdErr(messages), null, ErrorCategory.FromStdErr, null);
         }
@@ -573,10 +648,9 @@ namespace PowerProcess
                 foreach (var str in err) sb.Append(str);
                 return sb.ToString();
             }
-
         }
 
-        private struct WrapObject
+        public struct WrapObject
         {
 
             public WrapObject(RedirectionStream stream, string message)
@@ -603,14 +677,19 @@ namespace PowerProcess
 
         private static Func<TRes> infer<TRes>(Func<TRes> arg) { return arg; }
 
-        private static List<T> mkList<T>(int capacity)
+        private static List<T> NewList<T>(int capacity)
         {
             return capacity == int.MaxValue ? new List<T>(32) : new List<T>(capacity);
         }
 
         private void SetLastExitCode(Process process)
         {
-            base.SessionState.PSVariable.Set("LASTEXITCODE", process.ExitCode);
+            SetLastExitCode(process.ExitCode);
+        }
+
+        private void SetLastExitCode(int exitCode)
+        {
+            base.SessionState.PSVariable.Set("LASTEXITCODE", exitCode);
         }
 
         #endregion
