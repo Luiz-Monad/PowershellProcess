@@ -166,7 +166,7 @@ namespace PowerProcess
     {
         #region Private members
 
-        private readonly Action _runTask;
+        private readonly Action<TaskJob> _runTask;
         private readonly CancellationTokenSource _cancelSource;
 
         #endregion
@@ -199,7 +199,7 @@ namespace PowerProcess
         public TaskJob(
             PSCmdlet psCmdlet,
             string? name,
-            Action runTask,
+            Action<TaskJob> runTask,
             CancellationTokenSource cancelSource)
             : base(String.Empty, name)
         {
@@ -341,7 +341,7 @@ namespace PowerProcess
                     try
                     {
                         SetJobState(JobState.Running);
-                        _runTask();
+                        _runTask(this);
                         SetJobState(JobState.Completed);
                     }
                     catch (Exception e)

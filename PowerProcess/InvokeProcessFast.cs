@@ -451,8 +451,8 @@ namespace PowerProcess
             var _buffer = OutputBuffer ?? 256;
             var _merge = MergeStandardErrorToOutput.ToBool();
             var _wrap = WrapOutputStream.ToBool();
-            var _sing = _buffer == 1;
-            var _task = infer(async () =>
+            var _nobuffer = _buffer == 1;
+            var _task = infer<TaskJob?, Task>(_job => async () =>
             {
                 var _out = p.StandardOutput;
                 var _err = p.StandardError;
@@ -463,30 +463,36 @@ namespace PowerProcess
                 // calculate redirect
                 var src = new[]
                 {
-                   _wrap ? WrapSource.Out : (_sing ? WrapSource.PSO : WrapSource.Str),
-                   _wrap ? WrapSource.Err : (_sing ? WrapSource.MKE : WrapSource.Str),
+                   _wrap ? WrapSource.Out : (_nobuffer ? WrapSource.PSO : WrapSource.Str),
+                   _wrap ? WrapSource.Err : (_nobuffer ? WrapSource.MKE : WrapSource.Str),
                 };
                 var tgt = new[]
                 {
-                   _sing ? RedirTarget.Out : RedirTarget.Lst,
-                   _sing ? RedirTarget.Err : RedirTarget.Lst,
+                   _nobuffer ? RedirTarget.Out : RedirTarget.Lst,
+                   _nobuffer ? RedirTarget.Err : RedirTarget.Lst,
+                };
+                var wlst = _wrap ? NewList<Object>(_buffer) : null;
+                var lst = new[]
+                {
+                    _nobuffer ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
+                    _nobuffer ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
                 };
                 var lst_tgt = new[]
                 {
                    RedirTarget.Out,
                    RedirTarget.Err,
                 };
-                var wlst = _wrap ? NewList<Object>(_buffer) : null;
-                var lst = new[]
+                var job_tgt = new[]
                 {
-                    _sing ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
-                    _sing ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
+                   _job != null ? (IList)_job.Output : null,
+                   _job != null ? (IList)_job.Error : null,
                 };
                 if (_merge)
                 {
                     tgt[1] = tgt[0];
                     lst[1] = lst[0];
                     lst_tgt[1] = lst_tgt[0];
+                    job_tgt[1] = job_tgt[0];
                 }
 
                 // stream
@@ -516,7 +522,7 @@ namespace PowerProcess
                             if (r == null) continue;
 
                             // now redirect
-                            RedirectMessage(r, src[i], tgt[i], lst[i]);
+                            RedirectMessage(r, src[i], tgt[i], lst[i], job_tgt[i]);
                             count++;
                         }
                         // until buffer full or end of any streams
@@ -526,7 +532,7 @@ namespace PowerProcess
                     for (var i = 0; i < streams.Length; i++)
                     {
                         if (lst[i] == null) continue;
-                        RedirectList(lst[i]!, lst_tgt[i]);
+                        RedirectList(lst[i]!, lst_tgt[i], job_tgt[i]);
                     }
 
                     // until end of all streams
@@ -534,7 +540,7 @@ namespace PowerProcess
             });
             if (blocking)
             {
-                AsyncContext.Run(_task, ct);
+                AsyncContext.Run(_task(null), ct);
             }
             else
             {
@@ -542,7 +548,7 @@ namespace PowerProcess
                 var job = new TaskJob(
                     this,
                     p.ProcessName,
-                    () => AsyncContext.Run(_task, cts.Token),
+                    job => AsyncContext.Run(_task(job), cts.Token),
                     cts);
                 cts.Token.Register(() =>
                 {
@@ -560,7 +566,8 @@ namespace PowerProcess
             string message,
             WrapSource source,
             RedirTarget target,
-            IList? lst)
+            IList? lst,
+            object? job_stream)
         {
             var m = message;
             object? o = null;
@@ -572,25 +579,51 @@ namespace PowerProcess
                 case WrapSource.PSO: o = PSObject.AsPSObject(m); break;
                 case WrapSource.MKE: o = MakeError(m); break;
             }
-            switch (target)
+            if (job_stream == null)
             {
-                case RedirTarget.Out: base.WriteObject(o); break;
-                case RedirTarget.Err: base.WriteError(MakeError(m)); break;
-                case RedirTarget.Lst: lst!.Add(o!); break;
+                switch (target)
+                {
+                    case RedirTarget.Out: base.WriteObject(o); break;
+                    case RedirTarget.Err: base.WriteError(MakeError(m)); break;
+                    case RedirTarget.Lst: lst!.Add(o!); break;
+                }
+            }
+            else
+            {
+                var l = (IList)job_stream;
+                switch (target)
+                {
+                    case RedirTarget.Out: l.Add(o); break;
+                    case RedirTarget.Err: l.Add(o); break;
+                    case RedirTarget.Lst: lst!.Add(o!); break;
+                }
             }
         }
 
         private void RedirectList(
             object lst,
-            RedirTarget target)
+            RedirTarget target,
+            object? job_stream)
         {
             var l = (IList)lst;
-            if (l.Count == 0) return;
-            switch (target)
+            if (l.Count == 0) return; if (job_stream == null)
             {
-                case RedirTarget.Out: base.WriteObject(PSObject.AsPSObject(lst)); break;
-                case RedirTarget.Err: base.WriteError(MakeError((List<String>)lst)); break;
-                case RedirTarget.Lst: throw new InvalidOperationException();
+                switch (target)
+                {
+                    case RedirTarget.Out: base.WriteObject(PSObject.AsPSObject(lst)); break;
+                    case RedirTarget.Err: base.WriteError(MakeError((List<String>)lst)); break;
+                    case RedirTarget.Lst: throw new InvalidOperationException();
+                }
+            }
+            else
+            {
+                var j = (IList)job_stream;
+                switch (target)
+                {
+                    case RedirTarget.Out: j.Add(PSObject.AsPSObject(lst)); break;
+                    case RedirTarget.Err: j.Add(MakeError((List<String>)lst)); break;
+                    case RedirTarget.Lst: throw new InvalidOperationException();
+                }
             }
             l.Clear();
         }
@@ -675,7 +708,7 @@ namespace PowerProcess
 
         }
 
-        private static Func<TRes> infer<TRes>(Func<TRes> arg) { return arg; }
+        private static Func<T, Func<TRes>> infer<T, TRes>(Func<T, Func<TRes>> arg) { return arg; }
 
         private static List<T> NewList<T>(int capacity)
         {
