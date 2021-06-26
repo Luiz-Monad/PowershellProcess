@@ -16,7 +16,7 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>ProcessResources.resx</DependentUpon>
     </Compile>
-    <Compile Update="PSThreadJob\PSThreadJobResources.Designer.cs">
+    <Compile Update="PSThreadJobResources.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
       <DependentUpon>PSThreadJobResources.resx</DependentUpon>
@@ -28,7 +28,7 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>ProcessResources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
-    <EmbeddedResource Update="PSThreadJob\PSThreadJobResources.resx">
+    <EmbeddedResource Update="PSThreadJobResources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>PSThreadJobResources.Designer.cs</LastGenOutput>
     </EmbeddedResource>

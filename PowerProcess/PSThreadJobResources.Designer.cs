@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace PowerProcess.PSThreadJob {
+namespace PowerProcess {
     using System;
     
     
@@ -39,7 +39,7 @@ namespace PowerProcess.PSThreadJob {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("PowerProcess.PSThreadJob.PSThreadJobResources", typeof(PSThreadJobResources).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("PowerProcess.PSThreadJobResources", typeof(PSThreadJobResources).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -61,24 +61,6 @@ namespace PowerProcess.PSThreadJob {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Unable to parse script file..
-        /// </summary>
-        internal static string CannotParseScriptFile {
-            get {
-                return ResourceManager.GetString("CannotParseScriptFile", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Cannot run trusted script file {0} in FullLanguage mode because an initialization script block is included in the job, and the script block is not trusted..
-        /// </summary>
-        internal static string CannotRunTrustedFileInFL {
-            get {
-                return ResourceManager.GetString("CannotRunTrustedFileInFL", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Cannot start job because it is not in NotStarted state..
         /// </summary>
         internal static string CannotStartJob {
@@ -88,47 +70,11 @@ namespace PowerProcess.PSThreadJob {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Invalid file path extension.  Extension should be .ps1..
+        ///   Looks up a localized string similar to Cannot stop job because it is not in Started state..
         /// </summary>
-        internal static string FilePathExt {
+        internal static string CannotStopJob {
             get {
-                return ResourceManager.GetString("FilePathExt", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to FilePath cannot contain wildcards..
-        /// </summary>
-        internal static string FilePathWildcards {
-            get {
-                return ResourceManager.GetString("FilePathWildcards", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to No script block or script file was provided for the job to run..
-        /// </summary>
-        internal static string NoScriptToRun {
-            get {
-                return ResourceManager.GetString("NoScriptToRun", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Cannot get the value of the Using expression {0}.  Start-ThreadJob only supports using variable expressions..
-        /// </summary>
-        internal static string UsingNotVariableExpression {
-            get {
-                return ResourceManager.GetString("UsingNotVariableExpression", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Unable to find Using variable {0}..
-        /// </summary>
-        internal static string UsingVariableNotFound {
-            get {
-                return ResourceManager.GetString("UsingVariableNotFound", resourceCulture);
+                return ResourceManager.GetString("CannotStopJob", resourceCulture);
             }
         }
     }
