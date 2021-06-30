@@ -230,6 +230,8 @@ INPUTS
 
 OUTPUTS
     System.Diagnostics.Process
+  or
+    System.String
 
 
 ALIASES
@@ -240,296 +242,39 @@ REMARKS
     None
 
 
-PS C:\Users\LuizMonad\Desktop\PowershellProcess\PowerProcess\bin\Debug\net5.0>
-PS C:\Users\LuizMonad\Desktop\PowershellProcess\PowerProcess\bin\Debug\net5.0> get-help Invoke-ProcessFast -full
-
-NAME
-    Invoke-ProcessFast
-
-SYNTAX
-    Invoke-ProcessFast [-FilePath] <string> [[-ArgumentList] <string[]>] [-WorkingDirectory <string>] [-PassThru]
-    [-DontRedirectOutputs] [-MergeStandardErrorToOutput] [-WrapOutputStream] [-Wait] [-InputObject <string>]
-    [-OutputBuffer <int>] [-WhatIf] [-Confirm] [<CommonParameters>]
-
-    Invoke-ProcessFast [-Credential <pscredential>] [-LoadUserProfile] [-PassThru] [-DontRedirectOutputs]
-    [-MergeStandardErrorToOutput] [-WrapOutputStream] [-Wait] [-UseNewEnvironment] [-InputObject <string>]
-    [-OutputBuffer <int>] [-WhatIf] [-Confirm] [<CommonParameters>]
-
-
-PARAMETERS
-    -ArgumentList <string[]>
-
-        Required?                    false
-        Position?                    1
-        Accept pipeline input?       false
-        Parameter set name           ScriptBlock
-        Aliases                      Args
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -Confirm
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      cf
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -Credential <pscredential>
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           WinEnv
-        Aliases                      RunAs
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -DontRedirectOutputs
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      NoRedir
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -FilePath <string>
-
-        Required?                    true
-        Position?                    0
-        Accept pipeline input?       false
-        Parameter set name           ScriptBlock
-        Aliases                      PSPath, Path
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -InputObject <string>
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       true (ByValue)
-        Parameter set name           (All)
-        Aliases                      None
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -LoadUserProfile
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           WinEnv
-        Aliases                      Lup
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -MergeStandardErrorToOutput
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      Merge
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -OutputBuffer <int>
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      None
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -PassThru
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      None
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -UseNewEnvironment
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           WinEnv
-        Aliases                      None
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -Wait
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      None
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -WhatIf
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      wi
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -WorkingDirectory <string>
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           ScriptBlock
-        Aliases                      None
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    -WrapOutputStream
-
-        Required?                    false
-        Position?                    Named
-        Accept pipeline input?       false
-        Parameter set name           (All)
-        Aliases                      Obj
-        Dynamic?                     false
-        Accept wildcard characters?  false
-
-    <CommonParameters>
-        This cmdlet supports the common parameters: Verbose, Debug,
-        ErrorAction, ErrorVariable, WarningAction, WarningVariable,
-        OutBuffer, PipelineVariable, and OutVariable. For more information, see
-        about_CommonParameters (https://go.microsoft.com/fwlink/?LinkID=113216).
-
-
-INPUTS
-    System.String
-
-
-OUTPUTS
-    System.Diagnostics.Process
-  or
-    System.String
-
-
-ALIASES
-    startf
-    invn
-
 ```
 
 ## EXAMPLES
 
-### Example 1: Start a process that uses default values
+### Example 1: Start a process redirect all of its streams.
 
-This example starts a process that uses the `Calc.exe` file in the current folder. The command uses
-all of the default values, including the default window style, working folder, and credentials.
-
-```powershell
-Start-Process -FilePath "calc.exe"
-```
-
-### Example 2: Print a text file
-
-This example starts a process that prints the `C:\PS-Test\MyFile.txt` file.
+This example starts a process that will redirect its error stream to output as a `string`.
 
 ```powershell
-Start-Process -FilePath "myfile.txt" -WorkingDirectory "C:\PS-Test" -Verb Print
+Invoke-ProcessFast -FilePath pwsh -ArgumentList @('-noprofile', '-command', '0; 1; 2; 3') -MergeStandardErrorToOutput
 ```
 
-### Example 3: Start a process to sort items to a new file
+### Example 2: Start a process redirect all of its streams as objects.
 
-This example starts a process that sorts items in the `Testsort.txt` file and returns the sorted
-items in the `Sorted.txt` files. Any errors are written to the `SortError.txt` file.
+This example starts a process that will redirect its streams to output objects so you can differentiate 
+which stream it came from.
 
 ```powershell
-Start-Process -FilePath "Sort.exe" -RedirectStandardInput "Testsort.txt" -RedirectStandardOutput "Sorted.txt" -RedirectStandardError "SortError.txt" -UseNewEnvironment
+Invoke-ProcessFast -FilePath pwsh -ArgumentList @('-noprofile', '-command', '0; 1; 2; 3') -MergeStandardErrorToOutput -WrapOutputStream
 ```
 
-The **UseNewEnvironment** parameter specifies that the process runs with its own environment
-variables.
+### Example 3: Start a process while without buffering its output in a list.
 
-### Example 4: Start a process in a maximized window
-
-This example starts the `Notepad.exe` process. It maximizes the window and retains the window until
-the process completes.
+This example starts a process that wont buffer the processing in a list, this is a optimizations that 
+shouldn't matter for `ForEach-Object` or sending to the `Host` or `Transcript` or using `foreach`, 
+but in some cases you may want to disable it or change the default value, to disable this feature,
+set the buffer to `1`, the default value is `256`.
 
 ```powershell
-Start-Process -FilePath "notepad" -Wait -WindowStyle Maximized
+Invoke-ProcessFast -FilePath pwsh -ArgumentList @('-noprofile', '-command', '0; 1; 2; 3') -MergeStandardErrorToOutput -WrapOutputStream -OutputBuffer 1
 ```
 
-### Example 5: Start PowerShell as an administrator
-
-This example starts PowerShell by using the **Run as administrator** option.
-
-```powershell
-Start-Process -FilePath "powershell" -Verb RunAs
-```
-
-### Example 6: Using different verbs to start a process
-
-This example shows how to find the verbs that can be used when starting a process. The available
-verbs are determined by the filename extension of the file that runs in the process.
-
-```powershell
-$startExe = New-Object System.Diagnostics.ProcessStartInfo -Args PowerShell.exe
-$startExe.verbs
-```
-
-```Output
-open
-runas
-runasuser
-```
-
-The example uses `New-Object` to create a **System.Diagnostics.ProcessStartInfo** object for
-**PowerShell.exe**, the file that runs in the PowerShell process. The **Verbs** property of the
-**ProcessStartInfo** object shows that you can use the **Open** and **RunAs** verbs with
-`PowerShell.exe`, or with any process that runs a `.exe` file.
-
-### Example 7: Specifying arguments to the process
-
-Both commands start the Windows command interpreter, issuing a `dir` command on the `Program Files`
-folder. Because this foldername contains a space, the value needs surrounded with escaped quotes.
-Note that the first command specifies a string as **ArgumentList**. The second command is a string
-array.
-
-```powershell
-Start-Process -FilePath "$env:comspec" -ArgumentList "/c dir `"%systemdrive%\program files`""
-Start-Process -FilePath "$env:comspec" -ArgumentList "/c","dir","`"%systemdrive%\program files`""
-```
-
-### Example 8: Create a detached process on Linux
-
-On Windows, `Start-Process` creates an independent process that remains running independently of the
-launching shell. On non-Windows platforms, the newly started process is attached to the shell that
-launched. If the launching shell is closed, the child process is terminated.
-
-To avoid terminating the child process on Unix-like platforms, you can combine `Start-Process` with
-`nohup`. The following example launches a background instance of PowerShell on Linux that stays
-alive even after you close the launching session. The `nohup` command collects output in file
-`nohup.out` in the current directory.
-
-```powershell
-# Runs for 2 minutes and appends output to ./nohup.out
-Start-Process nohup 'pwsh -noprofile -c "1..120 | % { Write-Host . -NoNewline; sleep 1 }"'
-```
-
-In this example, `Start-Process` is running the Linux `nohup` command, which launches `pwsh` as a
-detached process. For more information, see the man page for
-[nohup](https://linux.die.net/man/1/nohup).
+![Example](example.png)
 
 ## PARAMETERS
 
@@ -582,29 +327,6 @@ processes finish.
 Type: System.Management.Automation.SwitchParameter
 Parameter Sets: (All)
 Aliases:
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -WindowStyle
-
-Specifies the state of the window that is used for the new process. The acceptable values for this
-parameter are: **Normal**, **Hidden**, **Minimized**, and **Maximized**. The default value is
-**Normal**.
-
-You cannot use the **WindowStyle** and **NoNewWindow** parameters in the same command.
-
-The parameter does not apply for non-Windows systems.
-
-```yaml
-Type: System.Diagnostics.ProcessWindowStyle
-Parameter Sets: (All)
-Aliases:
-Accepted values: Normal, Hidden, Minimized, Maximized
 
 Required: False
 Position: Named

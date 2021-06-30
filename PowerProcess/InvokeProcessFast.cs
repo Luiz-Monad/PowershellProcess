@@ -451,93 +451,73 @@ namespace PowerProcess
             var _buffer = OutputBuffer ?? 256;
             var _merge = MergeStandardErrorToOutput.ToBool();
             var _wrap = WrapOutputStream.ToBool();
-            var _nobuffer = _buffer == 1;
-            var _task = infer<TaskJob?, Task>(_job => async () =>
+            var _task = infer((Func<TaskJob?, Func<Task>>)(_job => async () =>
             {
                 var _out = p.StandardOutput;
                 var _err = p.StandardError;
 
                 var streams = new[] { _out, _err };
-                var tasks = new Task<string?>?[2] { null, null };
+                var ids = new List<int>(2) { 0, 1 };
+                var tasks = new List<Task<string?>?>(2);
 
                 // calculate redirect
-                var src = new[]
-                {
-                   _wrap ? WrapSource.Out : (_nobuffer ? WrapSource.PSO : WrapSource.Str),
-                   _wrap ? WrapSource.Err : (_nobuffer ? WrapSource.MKE : WrapSource.Str),
-                };
-                var tgt = new[]
-                {
-                   _nobuffer ? RedirTarget.Out : RedirTarget.Lst,
-                   _nobuffer ? RedirTarget.Err : RedirTarget.Lst,
-                };
-                var wlst = _wrap ? NewList<Object>(_buffer) : null;
-                var lst = new[]
-                {
-                    _nobuffer ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
-                    _nobuffer ? null : (_wrap ? (IList) wlst! : NewList<String>(_buffer)),
-                };
-                var lst_tgt = new[]
-                {
-                   RedirTarget.Out,
-                   RedirTarget.Err,
-                };
-                var job_tgt = new[]
-                {
-                   _job != null ? (IList)_job.Output : null,
-                   _job != null ? (IList)_job.Error : null,
-                };
-                if (_merge)
-                {
-                    tgt[1] = tgt[0];
-                    lst[1] = lst[0];
-                    lst_tgt[1] = lst_tgt[0];
-                    job_tgt[1] = job_tgt[0];
-                }
+                CalculareRedirect(
+                    _job != null,
+                    _merge,
+                    _wrap,
+                    _buffer,
+                    out var src,
+                    out var buf_tgt,
+                    out var buf_stream,
+                    out var tgt);
 
-                // stream
-                string? str = null;
+                // stream from source to target
+                foreach (var strm in streams)
+                {
+                    tasks.Add(strm.ReadLineAsync());
+                }
                 do
                 {
                     var count = 0;
                     do
                     {
-                        // null if complete, fire another one
-                        for (var i = 0; i < streams.Length; i++)
-                        {
-                            tasks[i] ??= streams[i].ReadLineAsync();
-                        }
                         // wait
-                        str = await Task.WhenAny(tasks!).Result;
-                        // for each stream
-                        for (var i = 0; i < streams.Length; i++)
+                        var t = await Task.WhenAny(tasks!);
+
+                        // find which stream
+                        var i = tasks.IndexOf(t);
+                        if (!t.IsCompleted) continue;
+
+                        // check for end of stream
+                        var r = t.Result!;
+                        if (r == null)
                         {
-                            // get and clear for next read if completed
-                            var t = tasks[i]!;
-                            if (!t.IsCompleted) continue;
-                            tasks[i] = null;
-
-                            // check for end of stream
-                            var r = t.Result!;
-                            if (r == null) continue;
-
-                            // now redirect
-                            RedirectMessage(r, src[i], tgt[i], lst[i], job_tgt[i]);
-                            count++;
+                            tasks.RemoveAt(i);
+                            ids.RemoveAt(i);
+                            continue;
                         }
+
+                        // get and clear for next read if completed
+                        var id = ids[i];
+                        tasks[i] = streams[id].ReadLineAsync();
+
+                        // now redirect
+                        var o = WrapMessage(r, src[id]);
+                        RedirectMessage(o, buf_tgt[id], buf_stream[id], _job);
+                        count++;
+
                         // until buffer full or end of any streams
-                    } while (count < _buffer && str != null);
+                    } while (count < _buffer && tasks.Count > 0);
 
                     // send collected results for each stream respectively
                     for (var i = 0; i < streams.Length; i++)
                     {
-                        if (lst[i] == null) continue;
-                        RedirectList(lst[i]!, lst_tgt[i], job_tgt[i]);
+                        RedirectList(buf_stream[i], tgt[i], _job);
                     }
 
                     // until end of all streams
-                } while (str != null);
-            });
+                } while (tasks.Count > 0);
+            }));
             if (blocking)
             {
                 AsyncContext.Run(_task(null), ct);
@@ -562,86 +542,171 @@ namespace PowerProcess
             }
         }
 
-        private void RedirectMessage(
-            string message,
-            WrapSource source,
-            RedirTarget target,
-            IList? lst,
-            object? job_stream)
+        private static void CalculareRedirect(
+            bool task, bool merge, bool wrap, int buffer,
+            out WrapSource[] wrapSrc,
+            out RedirTarget[] redirTgt, out object?[] redirStream,
+            out FinalTarget[] finalTgt)
         {
-            var m = message;
-            object? o = null;
-            switch (source)
+            if (!wrap)
             {
-                case WrapSource.Str: o = m; break;
-                case WrapSource.Out: o = WrapObject.Output(m); break;
-                case WrapSource.Err: o = WrapObject.Error(m); break;
-                case WrapSource.PSO: o = PSObject.AsPSObject(m); break;
-                case WrapSource.MKE: o = MakeError(m); break;
-            }
-            if (job_stream == null)
-            {
-                switch (target)
+                if (buffer != 1)
                 {
-                    case RedirTarget.Out: base.WriteObject(o); break;
-                    case RedirTarget.Err: base.WriteError(MakeError(m)); break;
-                    case RedirTarget.Lst: lst!.Add(o!); break;
+                    wrapSrc = new[] { WrapSource.Str, WrapSource.Str };
+                    redirTgt = new[] { RedirTarget.StrLst, RedirTarget.StrLst };
+                    redirStream = new[] { NewList<string>(buffer), NewList<string>(buffer) };
+                    finalTgt = new[] { FinalTarget.Out, FinalTarget.ErrStrLst };
+                }
+                else
+                {
+                    wrapSrc = new[] { WrapSource.Pso, WrapSource.Rcd };
+                    redirTgt = new[] { RedirTarget.Out, RedirTarget.Err };
+                    redirStream = new[] { (object?)null, (object?)null };
+                    finalTgt = new[] { FinalTarget.Nop, FinalTarget.Nop };
                 }
             }
             else
             {
-                var l = (IList)job_stream;
-                switch (target)
+                if (buffer != 1)
                 {
-                    case RedirTarget.Out: l.Add(o); break;
-                    case RedirTarget.Err: l.Add(o); break;
-                    case RedirTarget.Lst: lst!.Add(o!); break;
+                    wrapSrc = new[] { WrapSource.Out, WrapSource.Err };
+                    redirTgt = new[] { RedirTarget.ObjLst, RedirTarget.ObjLst };
+                    redirStream = new[] { NewList<object>(buffer), NewList<object>(buffer) };
+                    finalTgt = new[] { FinalTarget.Out, FinalTarget.ErrObjLst };
                 }
+                else
+                {
+                    wrapSrc = new[] { WrapSource.Out, WrapSource.Wse };
+                    redirTgt = new[] { RedirTarget.Out, RedirTarget.Err };
+                    redirStream = new[] { (object?)null, (object?)null };
+                    finalTgt = new[] { FinalTarget.Nop, FinalTarget.Nop };
+                }
+            }
+            if (merge)
+            {
+                if (wrapSrc[1] == WrapSource.Wse) wrapSrc[1] = WrapSource.Err;
+                redirTgt[1] = redirTgt[0];
+                redirStream[1] = redirStream[0];
+                finalTgt[1] = finalTgt[0];
+            }
+            if (task)
+            {
+                wrapSrc[0] = WrapTaskStream(wrapSrc[0]);
+                wrapSrc[1] = WrapTaskStream(wrapSrc[1]);
+            }
+        }
+
+        private static WrapSource WrapTaskStream(
+            WrapSource source)
+        {
+            return source switch
+            {
+                WrapSource.Str => WrapSource.Pso,
+                WrapSource.Out => WrapSource.Wso,
+                WrapSource.Err => WrapSource.Wse,
+                _ => source
+            };
+        }
+
+        private static object WrapMessage(
+            string message,
+            WrapSource source)
+        {
+            var m = message;
+            return source switch
+            {
+                WrapSource.Str => m,
+                WrapSource.Out => WrapObject.Output(m),
+                WrapSource.Err => WrapObject.Error(m),
+                WrapSource.Pso => PSObject.AsPSObject(m),
+                WrapSource.Rcd => MakeError(m),
+                WrapSource.Wso => MakeError(WrapObject.Output(m)),
+                WrapSource.Wse => MakeError(WrapObject.Error(m)),
+                _ => throw new InvalidOperationException(),
+            };
+        }
+
+        private void RedirectMessage(
+            object message,
+            RedirTarget target,
+            object? stream,
+            TaskJob? job)
+        {
+            switch (target)
+            {
+                case RedirTarget.Out:
+                    if (job != null) job.Output.Add((PSObject)message);
+                    else base.WriteObject(message);
+                    break;
+
+                case RedirTarget.Err:
+                    if (job != null) job.Error.Add((ErrorRecord)message);
+                    else base.WriteError((ErrorRecord)message);
+                    break;
+
+                case RedirTarget.StrLst:
+                    ((List<string>)stream!).Add((string)message);
+                    break;
+
+                case RedirTarget.ObjLst:
+                    ((List<object>)stream!).Add(message);
+                    break;
             }
         }
 
         private void RedirectList(
-            object lst,
-            RedirTarget target,
-            object? job_stream)
+            object? stream,
+            FinalTarget target,
+            TaskJob? job)
         {
-            var l = (IList)lst;
-            if (l.Count == 0) return; if (job_stream == null)
+            var l = stream as IList;
+            if (l == null || l.Count == 0) return;
+            switch (target)
             {
-                switch (target)
-                {
-                    case RedirTarget.Out: base.WriteObject(PSObject.AsPSObject(lst)); break;
-                    case RedirTarget.Err: base.WriteError(MakeError((List<String>)lst)); break;
-                    case RedirTarget.Lst: throw new InvalidOperationException();
-                }
-            }
-            else
-            {
-                var j = (IList)job_stream;
-                switch (target)
-                {
-                    case RedirTarget.Out: j.Add(PSObject.AsPSObject(lst)); break;
-                    case RedirTarget.Err: j.Add(MakeError((List<String>)lst)); break;
-                    case RedirTarget.Lst: throw new InvalidOperationException();
-                }
+                case FinalTarget.Out:
+                    if (job != null) job.Output.Add(PSObject.AsPSObject(stream!));
+                    else base.WriteObject(PSObject.AsPSObject(stream!));
+                    break;
+
+                case FinalTarget.ErrStrLst:
+                    if (job != null) job.Error.Add(MakeError((List<string>)stream!));
+                    else base.WriteError(MakeError((List<string>)stream!));
+                    break;
+
+                case FinalTarget.ErrObjLst:
+                    if (job != null) job.Error.Add(MakeError((List<object>)stream!));
+                    else base.WriteError(MakeError((List<object>)stream!));
+                    break;
+
             }
             l.Clear();
         }
 
         private enum WrapSource
         {
-            Str = 0,
-            Out = 1,
-            Err = 2,
-            PSO = 3,
-            MKE = 4,
+            Str,
+            Out,
+            Err,
+            Pso,
+            Rcd,
+            Wso,
+            Wse,
         }
 
         private enum RedirTarget
         {
-            Lst = 0,
-            Out = 1,
-            Err = 2,
+            Out,
+            Err,
+            StrLst,
+            ObjLst,
+        }
+
+        private enum FinalTarget
+        {
+            Nop,
+            Out,
+            ErrStrLst,
+            ErrObjLst,
         }
 
         #endregion
@@ -653,19 +718,39 @@ namespace PowerProcess
             return new ErrorRecord(new StdErr(message), null, ErrorCategory.FromStdErr, null);
         }
 
+        private static ErrorRecord MakeError(WrapObject wrapped)
+        {
+            return new ErrorRecord(new StdErr(wrapped), null, ErrorCategory.FromStdErr, null);
+        }
+
         private static ErrorRecord MakeError(List<string> messages)
+        {
+            return new ErrorRecord(new StdErr(messages), null, ErrorCategory.FromStdErr, null);
+        }
+
+        private static ErrorRecord MakeError(List<object> messages)
         {
             return new ErrorRecord(new StdErr(messages), null, ErrorCategory.FromStdErr, null);
         }
 
         private class StdErr : Exception
         {
-            private static List<string> empty = new List<string>();
-            private readonly List<string> err;
+            private static readonly List<string> empty = new();
+            private readonly IList<string> err;
+
+            public StdErr(List<object> err) : this(
+                err.ConvertAll<string>(o => o?.ToString()!))
+            {
+            }
 
             public StdErr(List<string> err) : base(ToString(err))
             {
                 this.err = err;
+            }
+
+            public StdErr(WrapObject wrapped) : base(wrapped.Message)
+            {
+                this.err = empty;
             }
 
             public StdErr(string message) : base(message)
@@ -706,6 +791,10 @@ namespace PowerProcess
                 return new WrapObject(RedirectionStream.Output, message);
             }
 
+            public override string ToString()
+            {
+                return $"{Stream}: {Message}";
+            }
         }
 
         private static Func<T, Func<TRes>> infer<T, TRes>(Func<T, Func<TRes>> arg) { return arg; }
