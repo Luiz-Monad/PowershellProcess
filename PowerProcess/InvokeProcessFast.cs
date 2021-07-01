@@ -451,7 +451,7 @@ namespace PowerProcess
             var _buffer = OutputBuffer ?? 256;
             var _merge = MergeStandardErrorToOutput.ToBool();
             var _wrap = WrapOutputStream.ToBool();
-            Func<TaskJob?, PSCmdlet, Func<Task>> _task = ((_job, _cmdlet) => () =>
+            Func<TaskJob?, PSCmdlet, Func<Task<bool>>> _task = ((_job, _cmdlet) => () =>
                    ConsumeAvailableNativeProcessOutputAsync(
                        _process: p,
                        _cmdlet: this,
@@ -483,7 +483,7 @@ namespace PowerProcess
             }
         }
 
-        private static async Task ConsumeAvailableNativeProcessOutputAsync(
+        private static async Task<bool> ConsumeAvailableNativeProcessOutputAsync(
             Process _process,
             PSCmdlet _cmdlet,
             TaskJob? _job,
@@ -555,6 +555,8 @@ namespace PowerProcess
 
                 // until end of all streams
             } while (tasks.Count > 0);
+
+            return true;
         }
 
         private static void CalculareRedirect(
