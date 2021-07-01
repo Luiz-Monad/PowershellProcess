@@ -451,76 +451,17 @@ namespace PowerProcess
             var _buffer = OutputBuffer ?? 256;
             var _merge = MergeStandardErrorToOutput.ToBool();
             var _wrap = WrapOutputStream.ToBool();
-            var _task = infer((Func<TaskJob?, Func<Task>>)(_job => async () =>
-            {
-                var _out = p.StandardOutput;
-                var _err = p.StandardError;
-
-                var streams = new[] { _out, _err };
-                var ids = new List<int>(2) { 0, 1 };
-                var tasks = new List<Task<string?>?>(2);
-
-                // calculate redirect
-                CalculareRedirect(
-                    _job != null,
-                    _merge,
-                    _wrap,
-                    _buffer,
-                    out var src,
-                    out var buf_tgt,
-                    out var buf_stream,
-                    out var tgt);
-
-                // stream from source to target
-                foreach (var strm in streams)
-                {
-                    tasks.Add(strm.ReadLineAsync());
-                }
-                do
-                {
-                    var count = 0;
-                    do
-                    {
-                        // wait
-                        var t = await Task.WhenAny(tasks!);
-
-                        // find which stream
-                        var i = tasks.IndexOf(t);
-                        if (!t.IsCompleted) continue;
-
-                        // check for end of stream
-                        var r = t.Result!;
-                        if (r == null)
-                        {
-                            tasks.RemoveAt(i);
-                            ids.RemoveAt(i);
-                            continue;
-                        }
-
-                        // get and clear for next read if completed
-                        var id = ids[i];
-                        tasks[i] = streams[id].ReadLineAsync();
-
-                        // now redirect
-                        var o = WrapMessage(r, src[id]);
-                        RedirectMessage(o, buf_tgt[id], buf_stream[id], _job);
-                        count++;
-
-                        // until buffer full or end of any streams
-                    } while (count < _buffer && tasks.Count > 0);
-
-                    // send collected results for each stream respectively
-                    for (var i = 0; i < streams.Length; i++)
-                    {
-                        RedirectList(buf_stream[i], tgt[i], _job);
-                    }
-
-                    // until end of all streams
-                } while (tasks.Count > 0);
-            }));
+            Func<TaskJob?, PSCmdlet, Func<Task>> _task = ((_job, _cmdlet) => () =>
+                   ConsumeAvailableNativeProcessOutputAsync(
+                       _process: p,
+                       _cmdlet: this,
+                       _job: _job,
+                       _merge: _merge,
+                       _wrap: _wrap,
+                       _buffer: _buffer));
             if (blocking)
             {
-                AsyncContext.Run(_task(null), ct);
+                AsyncContext.Run(_task(null, this), ct);
             }
             else
             {
@@ -528,7 +469,7 @@ namespace PowerProcess
                 var job = new TaskJob(
                     this,
                     p.ProcessName,
-                    job => AsyncContext.Run(_task(job), cts.Token),
+                    job => AsyncContext.Run(_task(job, this), cts.Token),
                     cts);
                 cts.Token.Register(() =>
                 {
@@ -540,6 +481,80 @@ namespace PowerProcess
                 });
                 job.StartJobAsync();
             }
+        }
+
+        private static async Task ConsumeAvailableNativeProcessOutputAsync(
+            Process _process,
+            PSCmdlet _cmdlet,
+            TaskJob? _job,
+            bool _merge,
+            bool _wrap,
+            int _buffer)
+        {
+            var _out = _process.StandardOutput;
+            var _err = _process.StandardError;
+
+            var streams = new[] { _out, _err };
+            var ids = new List<int>(2) { 0, 1 };
+            var tasks = new List<Task<string?>?>(2);
+
+            // calculate redirect
+            CalculareRedirect(
+                _job != null,
+                _merge,
+                _wrap,
+                _buffer,
+                out var src,
+                out var buf_tgt,
+                out var buf_stream,
+                out var tgt);
+
+            // stream from source to target
+            foreach (var strm in streams)
+            {
+                tasks.Add(strm.ReadLineAsync());
+            }
+            do
+            {
+                var count = 0;
+                do
+                {
+                    // wait
+                    var t = await Task.WhenAny(tasks!);
+
+                    // find which stream
+                    var i = tasks.IndexOf(t);
+                    if (!t.IsCompleted) continue;
+
+                    // check for end of stream
+                    var r = t.Result!;
+                    if (r == null)
+                    {
+                        tasks.RemoveAt(i);
+                        ids.RemoveAt(i);
+                        continue;
+                    }
+
+                    // get and clear for next read if completed
+                    var id = ids[i];
+                    tasks[i] = streams[id].ReadLineAsync();
+
+                    // now redirect
+                    var o = WrapMessage(r, src[id]);
+                    RedirectMessage(o, buf_tgt[id], buf_stream[id], _job, _cmdlet);
+                    count++;
+
+                    // until buffer full or end of any streams
+                } while (count < _buffer && tasks.Count > 0);
+
+                // send collected results for each stream respectively
+                for (var i = 0; i < streams.Length; i++)
+                {
+                    RedirectList(buf_stream[i], tgt[i], _job, _cmdlet);
+                }
+
+                // until end of all streams
+            } while (tasks.Count > 0);
         }
 
         private static void CalculareRedirect(
@@ -626,22 +641,23 @@ namespace PowerProcess
             };
         }
 
-        private void RedirectMessage(
+        private static void RedirectMessage(
             object message,
             RedirTarget target,
             object? stream,
-            TaskJob? job)
+            TaskJob? job,
+            PSCmdlet cmdlet)
         {
             switch (target)
             {
                 case RedirTarget.Out:
                     if (job != null) job.Output.Add((PSObject)message);
-                    else base.WriteObject(message);
+                    else cmdlet.WriteObject(message);
                     break;
 
                 case RedirTarget.Err:
                     if (job != null) job.Error.Add((ErrorRecord)message);
-                    else base.WriteError((ErrorRecord)message);
+                    else cmdlet.WriteError((ErrorRecord)message);
                     break;
 
                 case RedirTarget.StrLst:
@@ -654,10 +670,11 @@ namespace PowerProcess
             }
         }
 
-        private void RedirectList(
+        private static void RedirectList(
             object? stream,
             FinalTarget target,
-            TaskJob? job)
+            TaskJob? job,
+            PSCmdlet cmdlet)
         {
             var l = stream as IList;
             if (l == null || l.Count == 0) return;
@@ -665,17 +682,17 @@ namespace PowerProcess
             {
                 case FinalTarget.Out:
                     if (job != null) job.Output.Add(PSObject.AsPSObject(stream!));
-                    else base.WriteObject(PSObject.AsPSObject(stream!));
+                    else cmdlet.WriteObject(PSObject.AsPSObject(stream!));
                     break;
 
                 case FinalTarget.ErrStrLst:
                     if (job != null) job.Error.Add(MakeError((List<string>)stream!));
-                    else base.WriteError(MakeError((List<string>)stream!));
+                    else cmdlet.WriteError(MakeError((List<string>)stream!));
                     break;
 
                 case FinalTarget.ErrObjLst:
                     if (job != null) job.Error.Add(MakeError((List<object>)stream!));
-                    else base.WriteError(MakeError((List<object>)stream!));
+                    else cmdlet.WriteError(MakeError((List<object>)stream!));
                     break;
 
             }
@@ -796,8 +813,6 @@ namespace PowerProcess
                 return $"{Stream}: {Message}";
             }
         }
-
-        private static Func<T, Func<TRes>> infer<T, TRes>(Func<T, Func<TRes>> arg) { return arg; }
 
         private static List<T> NewList<T>(int capacity)
         {
