@@ -572,7 +572,7 @@ namespace PowerProcess
                     wrapSrc = new[] { WrapSource.Str, WrapSource.Str };
                     redirTgt = new[] { RedirTarget.StrLst, RedirTarget.StrLst };
                     redirStream = new[] { NewList<string>(buffer), NewList<string>(buffer) };
-                    finalTgt = new[] { FinalTarget.Out, FinalTarget.ErrStrLst };
+                    finalTgt = new[] { FinalTarget.OutStrLst, FinalTarget.ErrStrLst };
                 }
                 else
                 {
@@ -589,7 +589,7 @@ namespace PowerProcess
                     wrapSrc = new[] { WrapSource.Out, WrapSource.Err };
                     redirTgt = new[] { RedirTarget.ObjLst, RedirTarget.ObjLst };
                     redirStream = new[] { NewList<object>(buffer), NewList<object>(buffer) };
-                    finalTgt = new[] { FinalTarget.Out, FinalTarget.ErrObjLst };
+                    finalTgt = new[] { FinalTarget.OutObjLst, FinalTarget.ErrObjLst };
                 }
                 else
                 {
@@ -679,26 +679,30 @@ namespace PowerProcess
             PSCmdlet cmdlet)
         {
             var l = stream as IList;
-            if (l == null || l.Count == 0) return;
+            var lst = target switch
+            {
+                FinalTarget.OutObjLst => ((List<string>)stream!).ToArray(),
+                FinalTarget.ErrObjLst => ((List<string>)stream!).ToArray(),
+                FinalTarget.OutStrLst => ((List<object>)stream!).ToArray(),
+                FinalTarget.ErrStrLst => ((List<object>)stream!).ToArray(),
+                _ => throw new InvalidOperationException(),
+            };
+            if (lst == null || lst.Length == 0) return;
             switch (target)
             {
-                case FinalTarget.Out:
-                    if (job != null) job.Output.Add(PSObject.AsPSObject(stream!));
-                    else cmdlet.WriteObject(PSObject.AsPSObject(stream!));
+                case FinalTarget.OutObjLst:
+                case FinalTarget.OutStrLst:
+                    if (job != null) job.Output.Add(PSObject.AsPSObject(lst));
+                    else cmdlet.WriteObject(PSObject.AsPSObject(lst));
                     break;
 
                 case FinalTarget.ErrStrLst:
-                    if (job != null) job.Error.Add(MakeError((List<string>)stream!));
-                    else cmdlet.WriteError(MakeError((List<string>)stream!));
-                    break;
-
                 case FinalTarget.ErrObjLst:
-                    if (job != null) job.Error.Add(MakeError((List<object>)stream!));
-                    else cmdlet.WriteError(MakeError((List<object>)stream!));
+                    if (job != null) job.Error.Add(MakeError(lst));
+                    else cmdlet.WriteError(MakeError(lst));
                     break;
-
             }
-            l.Clear();
+            l!.Clear();
         }
 
         private enum WrapSource
@@ -723,7 +727,8 @@ namespace PowerProcess
         private enum FinalTarget
         {
             Nop,
-            Out,
+            OutStrLst,
+            OutObjLst,
             ErrStrLst,
             ErrObjLst,
         }
@@ -742,27 +747,21 @@ namespace PowerProcess
             return new ErrorRecord(new StdErr(wrapped), null, ErrorCategory.FromStdErr, null);
         }
 
-        private static ErrorRecord MakeError(List<string> messages)
-        {
-            return new ErrorRecord(new StdErr(messages), null, ErrorCategory.FromStdErr, null);
-        }
-
-        private static ErrorRecord MakeError(List<object> messages)
+        private static ErrorRecord MakeError(object messages)
         {
             return new ErrorRecord(new StdErr(messages), null, ErrorCategory.FromStdErr, null);
         }
 
         private class StdErr : Exception
         {
-            private static readonly List<string> empty = new();
-            private readonly IList<string> err;
+            private static readonly string[] empty = Array.Empty<string>();
+            private readonly string[] err;
 
-            public StdErr(List<object> err) : this(
-                err.ConvertAll<string>(o => o?.ToString()!))
+            public StdErr(object lst) : this(ConvertList(lst))
             {
             }
 
-            public StdErr(List<string> err) : base(ToString(err))
+            public StdErr(string[] err) : base(ToString(err))
             {
                 this.err = err;
             }
@@ -779,12 +778,22 @@ namespace PowerProcess
 
             public IList<string> ErrorList => err;
 
-            public static string ToString(List<string> err)
+            public static string[] ConvertList(object lst)
+            {
+                if (lst is string[] s)
+                    return s;
+                if (lst is object[] o)
+                    return Array.ConvertAll(o, i => i.ToString()!);
+                return empty;
+            }
+
+            public static string ToString(string[] lst)
             {
                 var sb = new StringBuilder();
-                foreach (var str in err) sb.Append(str);
+                foreach (var str in lst) sb.Append(str);
                 return sb.ToString();
             }
+
         }
 
         public struct WrapObject
