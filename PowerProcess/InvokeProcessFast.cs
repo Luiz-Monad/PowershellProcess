@@ -685,7 +685,7 @@ namespace PowerProcess
                 FinalTarget.ErrObjLst => ((List<string>)stream!).ToArray(),
                 FinalTarget.OutStrLst => ((List<object>)stream!).ToArray(),
                 FinalTarget.ErrStrLst => ((List<object>)stream!).ToArray(),
-                _ => throw new InvalidOperationException(),
+                _ => null,
             };
             if (lst == null || lst.Length == 0) return;
             switch (target)
