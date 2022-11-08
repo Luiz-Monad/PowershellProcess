@@ -1,7 +1,7 @@
 
 # PowerProcess
 
-This class provides a faster replacement for Powershell `&` and `Start-Process`.
+This module provides a faster replacement for Powershell `&` and `Start-Process`.
 
 # Motive
 

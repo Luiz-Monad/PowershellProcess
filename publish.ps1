@@ -4,4 +4,4 @@ param (
     [switch]$Force
 )
 
-Publish-Module -NuGetApiKey $NuGetApiKey -Path "$PSScriptRoot/ExternalCommand" -Repository "PSGallery" -Force:$Force
+Publish-Module -NuGetApiKey $NuGetApiKey -Path "$PSScriptRoot/PowerProcess" -Repository "PSGallery" -Force:$Force
