@@ -7,9 +7,11 @@ jobs:
     name: Publish action
     runs-on: ubuntu-latest
     steps:
+    - name: Git Checkout
+      uses: actions/checkout@v2.5.0    
     - name: Publish PowerShell Module
       uses: natescherer/publish-powershell-action@28153326f1c4d6eaef4deed0fb9b1d61e2b57d50
       with:
         token: ${{ secrets.PSGALLERY_TOKEN }}
         target: gallery
-        path: ./PowerProcess.psd1
+        path: PowerProcess
