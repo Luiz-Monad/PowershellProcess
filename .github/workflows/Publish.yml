@@ -1,0 +1,28 @@
+env:
+    ModuleName: 'PowerProcess'
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish action
+    runs-on: windows-latest
+    steps:
+    - name: Download workflow artifact
+      uses: dawidd6/action-download-artifact@v2.26.0
+      with:
+        workflow: Build.yml
+        workflow_conclusion: success
+    - name: Run PowerShell Script
+      shell: pwsh
+      run: |
+        Get-ChildItem "${{ github.workspace }}/${{ env.ModuleName }}" -Recurse
+
+    - name: Publish PowerShell
+      uses: natescherer/publish-powershell-action@v1.0.3
+      with:
+        token: ${{ secrets.PSGALLERY_TOKEN }}
+        target: gallery
+        path: "${{ github.workspace }}/${{ env.ModuleName }}"

@@ -1,0 +1,44 @@
+env:
+    ModuleName: 'PowerProcess'
+    Configuration: 'Release'
+    Framework: 'net6.0'
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+    - master
+    paths-ignore:
+        - "docs/**"
+        - "**/*.css"
+        - "**/*.gif"
+        - "**/*.html"
+        - "**/*.ico"
+        - "**/*.jpg"
+        - "**/*.md"
+        - "**/*.png"
+        - "**/*.txt"
+
+jobs:
+  build:
+    name: Build Module
+    runs-on: windows-latest
+    steps:
+   
+    - name: Git Checkout
+      uses: actions/checkout@v3.5.0
+    
+    - name: Setup .NET Core SDK
+      uses: actions/setup-dotnet@v3.0.3
+    
+    - name: Build .NET Core project
+      shell: pwsh
+      run: |
+        ./Build.ps1 -ModuleName ${{ env.ModuleName }} -Configuration ${{ env.Configuration }} -Framework ${{ env.Framework }}
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v3.1.2
+      with:
+        name: ${{ env.ModuleName }}
+        path: ${{ github.workspace }}\${{ env.ModuleName }}\bin\${{ env.Configuration }}\${{ env.Framework }}\${{ env.ModuleName }}
+        if-no-files-found: error

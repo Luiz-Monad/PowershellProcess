@@ -63,7 +63,7 @@ namespace Nito.AsyncEx
         /// </summary>
         private void OperationStarted()
         {
-            var newCount = Interlocked.Increment(ref _outstandingOperations);
+            _ = Interlocked.Increment(ref _outstandingOperations);
         }
 
         /// <summary>
@@ -128,12 +128,10 @@ namespace Nito.AsyncEx
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
 
-            using (var context = new AsyncContext(cancellationToken))
-            {
-                var task = context._taskFactory.Run(action);
-                context.Execute();
-                task.WaitAndUnwrapException(cancellationToken);
-            }
+            using var context = new AsyncContext(cancellationToken);
+            var task = context._taskFactory.Run(action);
+            context.Execute();
+            task.WaitAndUnwrapException(cancellationToken);
         }
 
         /// <summary>
@@ -147,12 +145,10 @@ namespace Nito.AsyncEx
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
 
-            using (var context = new AsyncContext(cancellationToken))
-            {
-                var task = context._taskFactory.Run(action);
-                context.Execute();
-                return task.WaitAndUnwrapException(cancellationToken);
-            }
+            using var context = new AsyncContext(cancellationToken);
+            var task = context._taskFactory.Run(action);
+            context.Execute();
+            return task.WaitAndUnwrapException(cancellationToken);
         }
 
         /// <summary>
@@ -166,17 +162,15 @@ namespace Nito.AsyncEx
                 throw new ArgumentNullException(nameof(action));
 
             // ReSharper disable AccessToDisposedClosure
-            using (var context = new AsyncContext(cancellationToken))
+            using var context = new AsyncContext(cancellationToken);
+            context.OperationStarted();
+            var task = context._taskFactory.Run(action).ContinueWith(t =>
             {
-                context.OperationStarted();
-                var task = context._taskFactory.Run(action).ContinueWith(t =>
-                {
-                    context.OperationCompleted();
-                    t.WaitAndUnwrapException(cancellationToken);
-                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, context._taskScheduler);
-                context.Execute();
-                task.WaitAndUnwrapException(cancellationToken);
-            }
+                context.OperationCompleted();
+                t.WaitAndUnwrapException(cancellationToken);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, context._taskScheduler);
+            context.Execute();
+            task.WaitAndUnwrapException(cancellationToken);
             // ReSharper restore AccessToDisposedClosure
         }
 
@@ -192,17 +186,15 @@ namespace Nito.AsyncEx
                 throw new ArgumentNullException(nameof(action));
 
             // ReSharper disable AccessToDisposedClosure
-            using (var context = new AsyncContext(cancellationToken))
+            using var context = new AsyncContext(cancellationToken);
+            context.OperationStarted();
+            var task = context._taskFactory.Run(action).ContinueWith(t =>
             {
-                context.OperationStarted();
-                var task = context._taskFactory.Run(action).ContinueWith(t =>
-                {
-                    context.OperationCompleted();
-                    return t.WaitAndUnwrapException(cancellationToken);
-                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, context._taskScheduler);
-                context.Execute();
-                return task.WaitAndUnwrapException(cancellationToken);
-            }
+                context.OperationCompleted();
+                return t.WaitAndUnwrapException(cancellationToken);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, context._taskScheduler);
+            context.Execute();
+            return task.WaitAndUnwrapException(cancellationToken);
             // ReSharper restore AccessToDisposedClosure
         }
 
@@ -219,7 +211,7 @@ namespace Nito.AsyncEx
         }
 
         /// <summary>
-        /// Gets the <see cref="SynchronizationContext"/> for this <see cref="AsyncContext"/>. From inside <see cref="Execute"/>, this value is always equal to <see cref="System.Threading.SynchronizationContext.Current"/>.
+        /// Gets the <see cref="SynchronizationContext"/> for this <see cref="AsyncContext"/>. From inside <see cref="Execute"/>, this value is always equal to <see cref="SynchronizationContext.Current"/>.
         /// </summary>
         [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
         public SynchronizationContext SynchronizationContext => _synchronizationContext;
