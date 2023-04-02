@@ -4,7 +4,7 @@ param (
     [string]$Framework = 'net6.0'
 )
 
-$ScriptPath = ($(try { $script:psEditor.GetEditorContext().CurrentFile.Path } catch {}), $script:MyInvocation.MyCommand.Path, $script:PSCommandPath, $(try { $script:psISE.CurrentFile.Fullpath.ToString() } catch {}) | % { if ($_ -ne '' ) { $_.ToLower() } } | Split-Path -EA 0 | Get-Unique ), $PSScriptRoot.ToLower() | Get-Unique
+$ScriptPath = ($(try { $script:psEditor.GetEditorContext().CurrentFile.Path } catch {}), $script:MyInvocation.MyCommand.Path, $script:PSCommandPath, $(try { $script:psISE.CurrentFile.Fullpath.ToString() } catch {}) | % { if ($_) { $_.ToLower() } } | Split-Path -EA 0 | Get-Unique ), $PSScriptRoot.ToLower() | Get-Unique
 Set-Location -Path $ScriptPath
 Write-Host "ScriptPath: $ScriptPath"
 
