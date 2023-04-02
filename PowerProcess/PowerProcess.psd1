@@ -9,7 +9,7 @@
 @{
 
 # Script module or binary module file associated with this manifest.
-RootModule = '.\PowerProcess\bin\Release\net6.0\publish\PowerProcess.dll'
+RootModule = 'PowerProcess.dll'
 
 # Version number of this module.
 ModuleVersion = '0.1.0'
