@@ -1,18 +1,17 @@
-
 # PowerProcess
 
-This module provides a faster replacement for Powershell `&` and `Start-Process`.
+This module provides a faster replacement for PowerShell `&` and `Start-Process`.
 
 # Motive
 
-The default implementation of powershell error stream allocates lots of objects and its very slow if you need to process the redirect error stream as strings, it also processes line by line with has a high burden on the pipeline.
+The default implementation of the PowerShell error stream allocates lots of objects and it's very slow if you need to process the redirect error stream as strings, it also processes line by line with has a high burden on the pipeline.
 
-Other important problem is that the default implementation until `Powershell 7.1.3` internally uses `Arguments` instead of `ArgumentList` besides being called ArgumentList, it is a `[string]`, which is unfortunate because of historical reasons.
+Another important problem is that the default implementation until `PowerShell 7.1.3` internally uses `Arguments` instead of `ArgumentList` besides being called ArgumentList, it is a `[string]`, which is unfortunate because of historical reasons.
 
 # Improvements
 
 * Added support for buffering `output` and `error` streams.
-* Its not possible to call the shell by mistake.
+* It's not possible to call the shell by mistake.
 * Support for the new VT terminals [WIP].
 * Correct treatment of argument lists by the direct use of `System.Diagnostics.Process`.
 * Possibility of merging `output` and `error` at the source.
@@ -51,7 +50,7 @@ REMARKS
     None
 
 
-PS C:\Users\LuizMonad\Desktop\PowershellProcess\PowerProcess\bin\Debug\net5.0> get-help Invoke-ProcessFast -full
+PS C:\Users\LuizMonad\Desktop\PowerShellProcess\PowerProcess\bin\Debug\net5.0> get-help Invoke-ProcessFast -full
 
 NAME
     Invoke-ProcessFast
@@ -246,7 +245,7 @@ REMARKS
 
 ## EXAMPLES
 
-### Example 1: Start a process redirect all of its streams.
+### Example 1: Start a process redirecting all of its streams.
 
 This example starts a process that will redirect its error stream to output as a `string`.
 
@@ -254,7 +253,7 @@ This example starts a process that will redirect its error stream to output as a
 Invoke-ProcessFast -FilePath pwsh -ArgumentList @('-noprofile', '-command', '0; 1; 2; 3') -MergeStandardErrorToOutput
 ```
 
-### Example 2: Start a process redirect all of its streams as objects.
+### Example 2: Start a process redirecting all of its streams as objects.
 
 This example starts a process that will redirect its streams to output objects so you can differentiate 
 which stream it came from.
@@ -265,9 +264,9 @@ Invoke-ProcessFast -FilePath pwsh -ArgumentList @('-noprofile', '-command', '0; 
 
 ### Example 3: Start a process while without buffering its output in a list.
 
-This example starts a process that wont buffer the processing in a list, this is a optimizations that 
+This example starts a process that won't buffer the processing in a list, this is an optimization that 
 shouldn't matter for `ForEach-Object` or sending to the `Host` or `Transcript` or using `foreach`, 
-but in some cases you may want to disable it or change the default value, to disable this feature,
+but in some cases, you may want to disable it or change the default value, to disable this feature,
 set the buffer to `1`, the default value is `256`.
 
 ```powershell
@@ -286,7 +285,7 @@ separated by commas. The cmdlet joins the array into a single string with each e
 separated by a single space.
 
 The outer quotes of the PowerShell strings are not included when the **ArgumentList** values are
-passed to the new process. If parameters or parameter values contain a space or quotes, they need to
+passed to the new process. If parameters or parameter values contain a space or quotes, they must
 be surrounded with escaped double quotes. For more information, see
 [about_Quoting_Rules](../Microsoft.PowerShell.Core/About/about_Quoting_Rules.md).
 
@@ -337,8 +336,8 @@ Accept wildcard characters: False
 
 ### -WorkingDirectory
 
-Specifies the location that the new process should start in. The default is the location of the
-executable file or document being started. Wildcards are not supported. The path name must not
+Specifies the location where the new process should start. The default is the location of the
+executable file or document that is started. Wildcards are not supported. The path name must not
 contain characters that would be interpreted as wildcards.
 
 ```yaml
@@ -371,7 +370,7 @@ Accept wildcard characters: False
 
 ### -WhatIf
 
-Shows what would happen if the cmdlet runs. The cmdlet is not run.
+Shows what would happen if the cmdlet runs. The cmdlet will not be executed.
 
 This parameter was introduced in PowerShell 6.0.
 
@@ -398,8 +397,8 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### None
 
-You can pipe input to this cmdlet, it will be converted to string and sent
-synchonously to the process.
+You can pipe input to this cmdlet, it will be converted to a string and sent
+synchronously to the process.
 
 ## OUTPUTS
 
@@ -413,19 +412,19 @@ parameter. Otherwise, this cmdlet does not return any output.
 - When using the **Wait** parameter, `Invoke-ProcessFast` waits for the created process to exit before returning control. This is different than the behavior of the 
   `Start-Process` cmdlet, which waits for the process tree (windows job).
 
-- This cmdlet is implemented by using the **Start** method of the **System.Diagnostics.Process**
+- This cmdlet is implemented using the **Start** method of the **System.Diagnostics.Process**
   class. For more information about this method, see
   [Process.Start Method](/dotnet/api/system.diagnostics.process.start#overloads).
 
 - On Windows, when you use **UseNewEnvironment**, the new process starts only containing the default
-  environment variables defined for the **Machine** scope. This has the side affect that the
+  environment variables defined for the **Machine** scope. This has the side effect that the
   `$env:USERNAME` is set to **SYSTEM**. None of the variables from the **User** scope are included.
 
 
 # Related Projects and scripts
 
-This provides a way to return all the output as error when the process `ExitCode` is non-zero. But it saves `output` and `error` as temporary files, so we lose streamming, which is no good.
-It also doesn't solve the problem with escaping arguments.
+This provides a way to return all the output as an error when the process `ExitCode` is non-zero. But it saves `output` and `error` as temporary files, so we lose streaming, which is no good.
+It also doesn't solve the problem of escaping arguments.
 
 [Adam Bertram blog post](https://adamtheautomator.com/start-process/)
 
@@ -433,16 +432,16 @@ It also doesn't solve the problem with escaping arguments.
 
 -------------------------------------------------
 
-This person provides a better implementation of Invoke-Process than Adam's one, because it uses `BeginOutputReadLine` and `BeginErrorReadLine` instead of temporary files.
+This person provides a better implementation of the Invoke-Process than Adam's one because it uses `BeginOutputReadLine` and `BeginErrorReadLine` instead of temporary files.
 But it also suffers from the same problems, its a bit better in that it directly uses `System.Diagnostics.Process`
 
 [guitarrapc_tech blog post](https://tech.guitarrapc.com/entry/2014/12/14/075248)
 
-[Invoke-Process on their utils github repo](https://github.com/guitarrapc/PowerShellUtil/tree/master/Invoke-Process)
+[Invoke-Process on their utils GitHub repo](https://github.com/guitarrapc/PowerShellUtil/tree/master/Invoke-Process)
 
 -------------------------------------------------
 
-This also suffer from the same problems, its bit simpler implementation worth mentioning
+This also suffers from the same problems, it's a bit simpler implementation worth mentioning
 
 [Relevant discussion](https://bleepcoder.com/powershell/648485701/call-native-operator)
 
@@ -450,8 +449,7 @@ This also suffer from the same problems, its bit simpler implementation worth me
 
 ------------------------------------------------
 
-And the final implementation I found was this in a citation from `mklement0` in one of the discussions on github issues.
-It solves the problem with the arguments, it kind of play well with streams, it does the right thing in relation with ordering of error and input, but it doesn't play well with the powershell pipeline, it redirects the entire buffer to a variable, which is not that nice if you want realtime processing as the process generates the output.
+And the final implementation I found was in a citation from `mklement0` in one of the discussions on GitHub issues.
+It solves the problem with the arguments, it kind of plays well with streams, and it does the right thing in relation to the ordering of error and input, but it doesn't play well with the powershell pipeline, it redirects the entire buffer to a variable, which is not that nice if you want realtime processing as the process generates the output.
 
 [Invoke-ExternalCommand](https://github.com/choovick/ps-invoke-externalcommand)
-

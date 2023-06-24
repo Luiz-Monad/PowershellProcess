@@ -1,7 +1,8 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 // This code was part of PSThreadJob.
 
+using PowerProcess.Resources;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -206,29 +207,43 @@ namespace PowerProcess
             _runTask = runTask;
             _cancelSource = cancelSource;
 
-            this.PSJobTypeName = "TaskJob"
+            PSJobTypeName = "TaskJob"
                 ;
             // Hook up data streams.
-            this.Output = new PSDataCollection<PSObject>();
-            this.Output.EnumeratorNeverBlocks = true;
+            Output = new PSDataCollection<PSObject>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
-            this.Error = new PSDataCollection<ErrorRecord>();
-            this.Error.EnumeratorNeverBlocks = true;
+            Error = new PSDataCollection<ErrorRecord>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
-            this.Progress = new PSDataCollection<ProgressRecord>();
-            this.Progress.EnumeratorNeverBlocks = true;
+            Progress = new PSDataCollection<ProgressRecord>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
-            this.Verbose = new PSDataCollection<VerboseRecord>();
-            this.Verbose.EnumeratorNeverBlocks = true;
+            Verbose = new PSDataCollection<VerboseRecord>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
-            this.Warning = new PSDataCollection<WarningRecord>();
-            this.Warning.EnumeratorNeverBlocks = true;
+            Warning = new PSDataCollection<WarningRecord>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
-            this.Debug = new PSDataCollection<DebugRecord>();
-            this.Debug.EnumeratorNeverBlocks = true;
+            Debug = new PSDataCollection<DebugRecord>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
-            this.Information = new PSDataCollection<InformationRecord>();
-            this.Information.EnumeratorNeverBlocks = true;
+            Information = new PSDataCollection<InformationRecord>
+            {
+                EnumeratorNeverBlocks = true
+            };
 
             // Create the JobManager job definition and job specification, and add to the JobManager.
             TaskJobDefinition = new JobDefinition(typeof(TaskJobSourceAdapter), "", Name);
@@ -253,13 +268,13 @@ namespace PowerProcess
             if (disposing)
             {
                 _cancelSource.Cancel();
-                base.Output.Complete();
-                base.Error.Complete();
-                base.Progress.Complete();
-                base.Verbose.Complete();
-                base.Warning.Complete();
-                base.Debug.Complete();
-                base.Information.Complete();
+                Output.Complete();
+                Error.Complete();
+                Progress.Complete();
+                Verbose.Complete();
+                Warning.Complete();
+                Debug.Complete();
+                Information.Complete();
             }
 
             base.Dispose(disposing);
@@ -280,12 +295,12 @@ namespace PowerProcess
         {
             get
             {
-                return (this.Output.Count > 0 ||
-                        this.Error.Count > 0 ||
-                        this.Progress.Count > 0 ||
-                        this.Verbose.Count > 0 ||
-                        this.Debug.Count > 0 ||
-                        this.Warning.Count > 0);
+                return (Output.Count > 0 ||
+                        Error.Count > 0 ||
+                        Progress.Count > 0 ||
+                        Verbose.Count > 0 ||
+                        Debug.Count > 0 ||
+                        Warning.Count > 0);
             }
         }
 
@@ -307,7 +322,7 @@ namespace PowerProcess
             {
                 SetJobState(JobState.Failed);
 
-                this.Error.Add(
+                Error.Add(
                         new ErrorRecord(e, "ThreadJobError", ErrorCategory.InvalidOperation, this));
             }
             catch (ObjectDisposedException)
@@ -329,7 +344,7 @@ namespace PowerProcess
         /// </summary>
         public override void StartJob()
         {
-            if (this.JobStateInfo.State != JobState.NotStarted)
+            if (JobStateInfo.State != JobState.NotStarted)
             {
                 throw new Exception(PSThreadJobResources.CannotStartJob);
             }
@@ -337,7 +352,7 @@ namespace PowerProcess
             {
                 Task.Factory.StartNew(() =>
                 {
-                    Thread.CurrentThread.Name = $"TaskJob ${this.Name}";
+                    Thread.CurrentThread.Name = $"TaskJob ${Name}";
                     try
                     {
                         SetJobState(JobState.Running);
@@ -361,8 +376,8 @@ namespace PowerProcess
         /// </summary>
         public override void StartJobAsync()
         {
-            this.StartJob();
-            this.OnStartJobCompleted(
+            StartJob();
+            OnStartJobCompleted(
                 new AsyncCompletedEventArgs(null, false, this));
         }
 
@@ -380,8 +395,8 @@ namespace PowerProcess
         /// </summary>
         public override void StopJob()
         {
-            if (this.JobStateInfo.State == JobState.Failed) return;
-            if (this.JobStateInfo.State != JobState.Running)
+            if (JobStateInfo.State == JobState.Failed) return;
+            if (JobStateInfo.State != JobState.Running)
             {
                 throw new Exception(PSThreadJobResources.CannotStopJob);
             }
@@ -410,8 +425,8 @@ namespace PowerProcess
         /// </summary>
         public override void StopJobAsync()
         {
-            this.StartJob();
-            this.OnStopJobCompleted(
+            StartJob();
+            OnStopJobCompleted(
                 new AsyncCompletedEventArgs(null, false, this));
         }
 

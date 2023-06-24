@@ -102,13 +102,7 @@ namespace Nito.AsyncEx
             /// </summary>
             /// <param name="obj">The <see cref="System.Object"/> to compare with this instance.</param>
             /// <returns><c>true</c> if the specified <see cref="System.Object"/> is equal to this instance; otherwise, <c>false</c>.</returns>
-            public override bool Equals(object? obj)
-            {
-                var other = obj as AsyncContextSynchronizationContext;
-                if (other == null)
-                    return false;
-                return (_context == other._context);
-            }
+            public override bool Equals(object? obj) => obj is AsyncContextSynchronizationContext other && _context == other._context;
         }
     }
 }

@@ -9,10 +9,10 @@
 @{
 
 # Script module or binary module file associated with this manifest.
-# RootModule = ''
+RootModule = 'PowerProcess.dll'
 
 # Version number of this module.
-ModuleVersion = '0.0.2'
+ModuleVersion = '0.1.0'
 
 # Supported PSEditions
 CompatiblePSEditions = 'Desktop', 'Core'
@@ -24,13 +24,13 @@ GUID = 'c938395c-1722-4cb3-8c7d-079afea18aa4'
 Author = 'LuizMonad'
 
 # Company or vendor of this module
-CompanyName = 'Unknown'
+CompanyName = ''
 
 # Copyright statement for this module
 Copyright = '(c) LuizMonad. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'Provides a faster replacement for Powershell `&` and `Start-Process`.'
+Description = 'Provides a faster replacement for PowerShell `&` and `Start-Process`.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '7.1.3'
@@ -54,7 +54,7 @@ PowerShellVersion = '7.1.3'
 # RequiredModules = @()
 
 # Assemblies that must be loaded prior to importing this module
-# RequiredAssemblies = @()
+# RequiredAssemblies = @("")
 
 # Script files (.ps1) that are run in the caller's environment prior to importing this module.
 # ScriptsToProcess = @()
@@ -72,7 +72,7 @@ PowerShellVersion = '7.1.3'
 FunctionsToExport = @()
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
-CmdletsToExport = @( 'Invoke-ProcessFast', 'Start-ThreadJob' )
+CmdletsToExport = @( 'Invoke-ProcessFast')
 
 # Variables to export from this module
 VariablesToExport = '*'
@@ -95,13 +95,13 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        # Tags = @()
+        Tags = @('process')
 
         # A URL to the license for this module.
-        LicenseUri = 'https://github.com/Luiz-Monad/PowershellProcess/LICENSE'
+        LicenseUri = 'https://github.com/Luiz-Monad/PowerShellProcess/LICENSE'
 
         # A URL to the main website for this project.
-        ProjectUri = 'https://github.com/Luiz-Monad/PowershellProcess'
+        ProjectUri = 'https://github.com/Luiz-Monad/PowerShellProcess'
 
         # A URL to an icon representing this module.
         # IconUri = ''
@@ -123,7 +123,7 @@ PrivateData = @{
 } # End of PrivateData hashtable
 
 # HelpInfo URI of this module
-HelpInfoURI = 'https://github.com/Luiz-Monad/PowershellProcess'
+HelpInfoURI = 'https://github.com/Luiz-Monad/PowerShellProcess'
 
 # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
 # DefaultCommandPrefix = ''

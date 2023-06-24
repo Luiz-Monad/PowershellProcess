@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nito.AsyncEx;
+using PowerProcess.Resources;
 
 namespace PowerProcess
 {
@@ -139,13 +140,12 @@ namespace PowerProcess
         /// </summary>
         protected override void BeginProcessing()
         {
-
             ProcessStartInfo startInfo = new();
 
             // Path = Mandatory parameter -> Will not be empty.
             try
             {
-                var cmdinfo = base.InvokeCommand.GetCommand(
+                var cmdinfo = InvokeCommand.GetCommand(
                     FilePath, CommandTypes.Application | CommandTypes.ExternalScript);
                 startInfo.FileName = cmdinfo.Definition;
             }
@@ -179,10 +179,10 @@ namespace PowerProcess
             else
             {
                 // Working Directory not specified -> Assign Current Path.
-                startInfo.WorkingDirectory = base.SessionState.Path.CurrentFileSystemLocation.Path;
+                startInfo.WorkingDirectory = SessionState.Path.CurrentFileSystemLocation.Path;
             }
 
-            if (this.ParameterSetName.Equals(WinEnvParameterSet))
+            if (ParameterSetName.Equals(WinEnvParameterSet))
             {
                 startInfo.UseShellExecute = false;
 
@@ -253,7 +253,7 @@ namespace PowerProcess
                 }
                 else
                 {
-                    _process.Exited += myProcess_Exited;
+                    _process.Exited += MyProcess_Exited;
                     _process.EnableRaisingEvents = true;
                     _waitHandle = new ManualResetEvent(false);
                 }
@@ -271,7 +271,7 @@ namespace PowerProcess
         /// </summary>
         protected override void ProcessRecord()
         {
-            if (!base.MyInvocation.ExpectingInput) return;
+            if (!MyInvocation.ExpectingInput) return;
             if (_process != null && _cancellationSource != null)
             {
                 ProduceNativeProcessInput(_process);
@@ -327,10 +327,7 @@ namespace PowerProcess
                 _cancellationSource.Cancel();
                 _cancellationSource = null;
             }
-            if (_waitHandle != null)
-            {
-                _waitHandle.Set();
-            }
+            _waitHandle?.Set();
             if (_process != null)
             {
                 if (!_process.HasExited)
@@ -351,7 +348,7 @@ namespace PowerProcess
         public void Dispose()
         {
             Dispose(true);
-            System.GC.SuppressFinalize(this);
+            GC.SuppressFinalize(this);
         }
 
         private void Dispose(bool isDisposing)
@@ -364,10 +361,7 @@ namespace PowerProcess
             try
             {
                 // Dispose the process if it's already created
-                if (_process != null)
-                {
-                    _process.Dispose();
-                }
+                _process?.Dispose();
             }
             catch (Exception)
             {
@@ -381,17 +375,14 @@ namespace PowerProcess
         /// <summary>
         /// When Process exits the wait handle is set.
         /// </summary>
-        private void myProcess_Exited(object? sender, System.EventArgs e)
+        private void MyProcess_Exited(object? sender, EventArgs e)
         {
-            if (_waitHandle != null)
-            {
-                _waitHandle.Set();
-            }
+            _waitHandle?.Set();
         }
 
         private string ResolveFilePath(string path)
         {
-            return base.GetResolvedProviderPathFromPSPath(path, out _)[0];
+            return GetResolvedProviderPathFromPSPath(path, out _)[0];
         }
 
         private static void LoadEnvironmentVariable(ProcessStartInfo startinfo, IDictionary EnvironmentVariables)
@@ -429,7 +420,7 @@ namespace PowerProcess
 
         private void SetupInputOutputRedirection(Process p)
         {
-            p.StartInfo.RedirectStandardInput = base.MyInvocation.ExpectingInput;
+            p.StartInfo.RedirectStandardInput = MyInvocation.ExpectingInput;
             p.StartInfo.RedirectStandardOutput = !DontRedirectOutputs;
             p.StartInfo.RedirectStandardError = !DontRedirectOutputs;
         }
@@ -768,12 +759,12 @@ namespace PowerProcess
 
             public StdErr(WrapObject wrapped) : base(wrapped.Message)
             {
-                this.err = empty;
+                err = empty;
             }
 
             public StdErr(string message) : base(message)
             {
-                this.err = empty;
+                err = empty;
             }
 
             public IList<string> ErrorList => err;
@@ -796,7 +787,7 @@ namespace PowerProcess
 
         }
 
-        public struct WrapObject
+        public readonly struct WrapObject
         {
 
             public WrapObject(RedirectionStream stream, string message)
@@ -837,7 +828,7 @@ namespace PowerProcess
 
         private void SetLastExitCode(int exitCode)
         {
-            base.SessionState.PSVariable.Set("LASTEXITCODE", exitCode);
+            SessionState.PSVariable.Set("LASTEXITCODE", exitCode);
         }
 
         #endregion
