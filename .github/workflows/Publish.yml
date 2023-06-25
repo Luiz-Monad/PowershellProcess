@@ -18,11 +18,13 @@ jobs:
     - name: Run PowerShell Script
       shell: pwsh
       run: |
-        Get-ChildItem "${{ github.workspace }}/${{ env.ModuleName }}" -Recurse
+        $ScriptPath = Join-Path "${{ github.workspace }}" "${{ env.ModuleName }}"
+        Get-ChildItem $ScriptPath -Recurse
+        "ScriptPath=$ScriptPath" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Publish PowerShell
       uses: natescherer/publish-powershell-action@v1.0.3
       with:
         token: ${{ secrets.PSGALLERY_TOKEN }}
         target: gallery
-        path: "${{ github.workspace }}/${{ env.ModuleName }}"
+        path: "${{ env.ModuleName }}"
