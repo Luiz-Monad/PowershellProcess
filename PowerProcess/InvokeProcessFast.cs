@@ -672,10 +672,10 @@ namespace PowerProcess
             var l = stream as IList;
             var lst = target switch
             {
-                FinalTarget.OutObjLst => ((List<string>)stream!).ToArray(),
-                FinalTarget.ErrObjLst => ((List<string>)stream!).ToArray(),
-                FinalTarget.OutStrLst => ((List<object>)stream!).ToArray(),
-                FinalTarget.ErrStrLst => ((List<object>)stream!).ToArray(),
+                FinalTarget.OutObjLst => ((List<object>)stream!).ToArray(),
+                FinalTarget.ErrObjLst => ((List<object>)stream!).ToArray(),
+                FinalTarget.OutStrLst => ((List<string>)stream!).ToArray(),
+                FinalTarget.ErrStrLst => ((List<string>)stream!).ToArray(),
                 _ => null,
             };
             if (lst == null || lst.Length == 0) return;
